@@ -88,11 +88,6 @@ namespace LcdFusion
             try { File.Delete(Path.Combine(ProfilesDir, Safe(name) + ".xml")); } catch { }
         }
 
-        public static bool Exists(string name)
-        {
-            return File.Exists(Path.Combine(ProfilesDir, Safe(name) + ".xml"));
-        }
-
         public static void SaveLast(ProfileData data) { EnsureDirs(); WriteXml(LastPath, data); }
         public static ProfileData LoadLast() { return ReadXml<ProfileData>(LastPath); }
 
