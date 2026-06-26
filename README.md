@@ -144,4 +144,4 @@ License texts are in [`LcdFusion/licenses/`](LcdFusion/licenses). These componen
 
 ## License
 
-To be decided by the project owner (e.g. MIT). Until a `LICENSE` file is added, the source is provided as‑is; third‑party components keep their own licenses listed above.
+Released under the [MIT License](LICENSE) © 2026 itsmylife44. The bundled third‑party components keep their own licenses (listed above and under [`LcdFusion/licenses/`](LcdFusion/licenses)).
