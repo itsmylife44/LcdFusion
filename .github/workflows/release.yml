@@ -1,0 +1,37 @@
+name: Build & Release
+
+# Every push to main produces a new versioned portable build and publishes it
+# as a GitHub Release. Version = 1.0.<run number> (monotonic, one per change).
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build & package portable
+        shell: pwsh
+        run: |
+          $v = "1.0.${{ github.run_number }}"
+          ./pack.ps1 -Version $v
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v$env:VERSION" "LcdFusion-$env:VERSION-portable.zip" `
+            --title "LCD Fusion v$env:VERSION" `
+            --notes "Automated portable build from commit ${{ github.sha }}.`n`nUnzip and run LcdFusion.exe (Windows 10/11, runs elevated for CPU temperature)."

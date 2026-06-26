@@ -6,6 +6,8 @@ LCD Fusion talks directly to the USB displays found on **Valkyrie** (Myth.Cool) 
 
 > Unofficial, community project. Not affiliated with or endorsed by Valkyrie, Thermalright, Myth.Cool or TRCC.
 
+![LCD Fusion — per‑screen editor with live preview](docs/screenshot.png)
+
 ---
 
 ## Features
