@@ -81,6 +81,8 @@ namespace LcdFusion
         private System.Windows.Forms.ToolStripMenuItem _trayOpen, _trayExit;
         private bool _trayHinted;
         private bool _profileDirty;
+        private string _lastSeenVersion = "";
+        private bool _startupChangelogChecked;
         private readonly List<System.Drawing.Color> _recentColors = new List<System.Drawing.Color>();
         private volatile bool _refreshing;
         private readonly DispatcherTimer _timer;
@@ -93,6 +95,7 @@ namespace LcdFusion
             if (!string.IsNullOrEmpty(settings.Lang) && Array.IndexOf(Loc.Codes, settings.Lang) >= 0) Loc.Lang = settings.Lang;
             LoadRecentColors(settings);
             _currentProfile = settings.LastProfile ?? "";
+            _lastSeenVersion = settings.LastSeenVersion ?? "";
             _autoStart = AutoStartService.IsEnabled();
 
             Title = "LCD Fusion";
@@ -130,6 +133,14 @@ namespace LcdFusion
             CompositionTarget.Rendering += OnRender;
             RefreshStatus();
             SetupTray();
+            Loaded += OnWindowLoaded;
+        }
+
+        private void OnWindowLoaded(object sender, RoutedEventArgs e)
+        {
+            if (_startupChangelogChecked) return;
+            _startupChangelogChecked = true;
+            ShowStartupChangelogIfNeeded();
         }
 
         private void OnLanguageChanged()
@@ -609,6 +620,66 @@ namespace LcdFusion
             dlg.ShowDialog();
         }
 
+        private void ShowStartupChangelogIfNeeded()
+        {
+            string version = AppVersionText();
+            if (string.IsNullOrEmpty(version) || string.Equals(_lastSeenVersion, version, StringComparison.OrdinalIgnoreCase)) return;
+
+            string changelog = ReadOptionalFile("CHANGELOG.md", "RELEASE_CHANGELOG.md");
+            if (string.IsNullOrWhiteSpace(changelog))
+            {
+                _lastSeenVersion = version;
+                SaveCurrentSettings();
+                return;
+            }
+
+            ShowChangelogDialog(version, changelog);
+            _lastSeenVersion = version;
+            SaveCurrentSettings();
+        }
+
+        private void ShowChangelogDialog(string version, string changelog)
+        {
+            var dlg = new Window
+            {
+                Title = Loc.T("changelog.title"),
+                Width = 720,
+                Height = 540,
+                MinWidth = 560,
+                MinHeight = 420,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                Background = Bg,
+                Foreground = TextBr,
+                FontFamily = new FontFamily("Segoe UI")
+            };
+            dlg.Resources.MergedDictionaries.Add(Theme.Build());
+
+            var root = new Grid { Margin = new Thickness(22) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition());
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var head = new StackPanel();
+            head.Children.Add(new TextBlock { Text = Loc.T("changelog.title"), FontSize = 24, FontWeight = FontWeights.SemiBold, Foreground = TextBr });
+            head.Children.Add(new TextBlock { Text = Loc.T("changelog.version", version), FontSize = 12.5, Foreground = MutedBr, Margin = new Thickness(0, 4, 0, 0) });
+            root.Children.Add(head);
+
+            TextBox content = LegalTextBox(changelog);
+            content.Margin = new Thickness(0, 18, 0, 0);
+            Grid.SetRow(content, 1);
+            root.Children.Add(content);
+
+            var close = Btn(Loc.T("dlg.close"), delegate { dlg.Close(); }, "BtnPrimary");
+            close.HorizontalAlignment = HorizontalAlignment.Right;
+            close.Margin = new Thickness(0, 18, 0, 0);
+            Grid.SetRow(close, 2);
+            root.Children.Add(close);
+
+            dlg.Content = root;
+            dlg.ShowDialog();
+        }
+
         private Button AboutNavButton(string text, RoutedEventHandler handler)
         {
             var b = Btn(text, handler, "BtnGhost");
@@ -712,6 +783,23 @@ namespace LcdFusion
                 try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
             }
             return Loc.T("legal.fileMissing");
+        }
+
+        private string ReadOptionalFile(params string[] relativePaths)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            foreach (string rel in relativePaths)
+            {
+                string path = System.IO.Path.Combine(baseDir, rel);
+                try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
+            }
+            string cwd = Directory.GetCurrentDirectory();
+            foreach (string rel in relativePaths)
+            {
+                string path = System.IO.Path.Combine(cwd, rel);
+                try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
+            }
+            return "";
         }
 
         private string ReadBundledLicenseIndex()
@@ -1467,13 +1555,28 @@ namespace LcdFusion
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); _tray = null; }
             if (_trayIcon != null) { _trayIcon.Dispose(); _trayIcon = null; }
             try { ProfileService.SaveLast(_engine.Capture(_tgtValk, _tgtThermal, _activeValk)); } catch { }
-            try { ProfileService.SaveSettings(new AppSettings { Lang = Loc.Lang, LastProfile = _currentProfile, RecentColors = RecentColorArgb() }); } catch { }
+            SaveCurrentSettings();
             Loc.Changed -= OnLanguageChanged;
             CompositionTarget.Rendering -= OnRender;
             _engine.Shutdown();
             SensorService.Close();
             UsbDevice.Exit();
             base.OnClosed(e);
+        }
+
+        private void SaveCurrentSettings()
+        {
+            try
+            {
+                ProfileService.SaveSettings(new AppSettings
+                {
+                    Lang = Loc.Lang,
+                    LastProfile = _currentProfile,
+                    LastSeenVersion = _lastSeenVersion,
+                    RecentColors = RecentColorArgb()
+                });
+            }
+            catch { }
         }
     }
 }

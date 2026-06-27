@@ -43,6 +43,7 @@ namespace LcdFusion
     {
         public string Lang = "";
         public string LastProfile = "";
+        public string LastSeenVersion = "";
         public List<int> RecentColors = new List<int>();
     }
 
