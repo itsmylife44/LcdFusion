@@ -309,6 +309,14 @@ namespace LcdFusion
             ApplyScene(false, p.Thermal);
         }
 
+        public void CopyScene(bool fromValkyrie, bool toValkyrie)
+        {
+            if (fromValkyrie == toValkyrie) return;
+            SceneData data;
+            lock (_lock) { data = ToData(fromValkyrie ? _valk : _thermal); }
+            ApplyScene(toValkyrie, data);
+        }
+
         private static SceneData ToData(LcdScene s)
         {
             SceneData d = new SceneData

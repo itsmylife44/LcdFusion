@@ -345,6 +345,9 @@ namespace LcdFusion
         {
             if (_profileCombo.SelectedItem == null) return;
             string name = _profileCombo.SelectedItem.ToString();
+            MessageBoxResult confirm = MessageBox.Show(this, Loc.T("prof.deleteConfirm", name), Loc.T("prof.deleteTitle"),
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (confirm != MessageBoxResult.Yes) return;
             ProfileService.Delete(name);
             if (_currentProfile == name) _currentProfile = "";
             PopulateProfiles();
@@ -522,12 +525,17 @@ namespace LcdFusion
             target.Unchecked += delegate { SetTarget(false); };
             _editorPanel.Children.Add(target);
 
+            string otherScreen = _activeValk ? "Thermalright" : "Valkyrie";
+            var screenRow = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+            screenRow.Children.Add(Chip(Loc.T("screen.copyTo", otherScreen), delegate { CopyActiveSceneToOther(); }));
+            _editorPanel.Children.Add(screenRow);
+
             _editorPanel.Children.Add(SectionLabel(Loc.T("sec.background"), 18));
             var bgRow = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-            bgRow.Children.Add(Chip(Loc.T("bg.image"), delegate { PickMedia(false); }));
-            bgRow.Children.Add(Chip("GIF", delegate { PickMedia(true); }));
-            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.Color); MarkProfileDirty(); RebuildEditor(); }));
-            bgRow.Children.Add(Chip(Loc.T("bg.none"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.None); MarkProfileDirty(); RebuildEditor(); }));
+            bgRow.Children.Add(Chip(Loc.T("bg.image"), delegate { PickMedia(false); }, scene.Background == BackgroundKind.Image));
+            bgRow.Children.Add(Chip("GIF", delegate { PickMedia(true); }, scene.Background == BackgroundKind.Gif));
+            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.Color); MarkProfileDirty(); RebuildEditor(); }, scene.Background == BackgroundKind.Color));
+            bgRow.Children.Add(Chip(Loc.T("bg.none"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.None); MarkProfileDirty(); RebuildEditor(); }, scene.Background == BackgroundKind.None));
             _editorPanel.Children.Add(bgRow);
 
             if (scene.Background == BackgroundKind.Image || scene.Background == BackgroundKind.Gif)
@@ -536,8 +544,9 @@ namespace LcdFusion
                 var tr = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
                 tr.Children.Add(Chip("↺ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 270) % 360); MarkProfileDirty(); RebuildEditor(); }));
                 tr.Children.Add(Chip("↻ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 90) % 360); MarkProfileDirty(); RebuildEditor(); }));
-                tr.Children.Add(Chip(Loc.T("tf.mirror"), delegate { _engine.Edit(_activeValk, s => s.FlipH = !s.FlipH); MarkProfileDirty(); }));
-                tr.Children.Add(Chip(scene.Fit == FitMode.Fit ? Loc.T("tf.fit") : Loc.T("tf.fill"), delegate { _engine.Edit(_activeValk, s => s.Fit = s.Fit == FitMode.Fit ? FitMode.Fill : FitMode.Fit); MarkProfileDirty(); RebuildEditor(); }));
+                tr.Children.Add(Chip(Loc.T("tf.mirror"), delegate { _engine.Edit(_activeValk, s => s.FlipH = !s.FlipH); MarkProfileDirty(); RebuildEditor(); }, scene.FlipH));
+                tr.Children.Add(Chip(Loc.T("tf.fit"), delegate { _engine.Edit(_activeValk, s => s.Fit = FitMode.Fit); MarkProfileDirty(); RebuildEditor(); }, scene.Fit == FitMode.Fit));
+                tr.Children.Add(Chip(Loc.T("tf.fill"), delegate { _engine.Edit(_activeValk, s => s.Fit = FitMode.Fill); MarkProfileDirty(); RebuildEditor(); }, scene.Fit == FitMode.Fill));
                 tr.Children.Add(Chip(Loc.T("tf.reset"), delegate { _engine.Edit(_activeValk, s => { s.Rotation = 0; s.FlipH = false; s.Scale = 1; s.PanX = 0; s.PanY = 0; }); MarkProfileDirty(); RebuildEditor(); }));
                 _editorPanel.Children.Add(tr);
                 _editorPanel.Children.Add(Slider(Loc.T("sl.zoom"), 0.2, 3.0, scene.Scale, v => _engine.Edit(_activeValk, s => s.Scale = v), v => v.ToString("0.00") + "×"));
@@ -583,10 +592,10 @@ namespace LcdFusion
             grid.Children.Add(sel);
 
             var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
-            actions.Children.Add(MiniLayerButton("Up", Loc.T("ov.moveUp"), "BtnChip", index > 0, delegate { MoveOverlay(index, -1); }));
-            actions.Children.Add(MiniLayerButton("Dn", Loc.T("ov.moveDown"), "BtnChip", index < _engine.Scene(_activeValk).Overlays.Count - 1, delegate { MoveOverlay(index, 1); }));
-            actions.Children.Add(MiniLayerButton("Copy", Loc.T("ov.duplicate"), "BtnChip", true, delegate { DuplicateOverlayAt(index); }));
-            actions.Children.Add(MiniLayerButton("X", Loc.T("ov.remove"), "BtnDanger", true, delegate { RemoveOverlayAt(index); }));
+            actions.Children.Add(MiniLayerButton("↑", Loc.T("ov.moveUp"), "BtnChip", index > 0, delegate { MoveOverlay(index, -1); }));
+            actions.Children.Add(MiniLayerButton("↓", Loc.T("ov.moveDown"), "BtnChip", index < _engine.Scene(_activeValk).Overlays.Count - 1, delegate { MoveOverlay(index, 1); }));
+            actions.Children.Add(MiniLayerButton("⧉", Loc.T("ov.duplicate"), "BtnChip", true, delegate { DuplicateOverlayAt(index); }));
+            actions.Children.Add(MiniLayerButton("×", Loc.T("ov.remove"), "BtnDanger", true, delegate { RemoveOverlayAt(index); }));
             Grid.SetColumn(actions, 1);
             grid.Children.Add(actions);
 
@@ -622,6 +631,8 @@ namespace LcdFusion
 
             stack.Children.Add(Slider(Loc.T("sl.size"), 0.05, 0.9, o.Size, v => _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Size = v; }), v => (int)(v * 100) + "%"));
             stack.Children.Add(Slider(Loc.T("sl.rotation"), 0, 360, o.Rotation, v => _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Rotation = v; }), v => ((int)v) + "°"));
+            stack.Children.Add(Slider(Loc.T("sl.x"), 0, 1, o.X, v => _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].X = v; }), v => (int)(v * 100) + "%"));
+            stack.Children.Add(Slider(Loc.T("sl.y"), 0, 1, o.Y, v => _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Y = v; }), v => (int)(v * 100) + "%"));
 
             stack.Children.Add(new TextBlock { Text = Loc.T("ov.color"), Foreground = MutedBr, FontSize = 12, Margin = new Thickness(0, 10, 0, 0) });
             var colors = new WrapPanel { Margin = new Thickness(0, 7, 0, 0) };
@@ -662,6 +673,16 @@ namespace LcdFusion
             else _engine.LoadImage(_activeValk, dialog.FileName);
             MarkProfileDirty();
             RebuildEditor();
+        }
+
+        private void CopyActiveSceneToOther()
+        {
+            bool targetValkyrie = !_activeValk;
+            string targetName = targetValkyrie ? "Valkyrie" : "Thermalright";
+            _engine.CopyScene(_activeValk, targetValkyrie);
+            MarkProfileDirty();
+            SetStatus(true, Loc.T("screen.copiedTo", targetName));
+            RefreshPreviewOverlay();
         }
 
         private void AddOverlay(OverlayKind kind)
@@ -1058,8 +1079,20 @@ namespace LcdFusion
 
         private Button Chip(string text, RoutedEventHandler handler)
         {
+            return Chip(text, handler, false);
+        }
+
+        private Button Chip(string text, RoutedEventHandler handler, bool active)
+        {
             var b = new Button { Content = text, Margin = new Thickness(0, 0, 8, 8) };
             b.Style = (Style)FindResource("BtnChip");
+            if (active)
+            {
+                b.Background = AccentBr;
+                b.Foreground = AccentTextBr;
+                b.BorderBrush = AccentBr;
+                b.FontWeight = FontWeights.SemiBold;
+            }
             b.Click += handler;
             return b;
         }
