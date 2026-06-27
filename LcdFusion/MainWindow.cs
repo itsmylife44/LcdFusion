@@ -62,9 +62,11 @@ namespace LcdFusion
         private Border _previewBorder;
         private TextBlock _previewCaption;
         private Image _preview;
+        private Canvas _previewOverlay;
         private TextBlock _statusText;
         private Ellipse _statusDot;
         private Button _startButton, _stopButton;
+        private TextBlock _profileDirtyText;
 
         private DeviceSnapshot _snapshot;
         private byte[] _lastPng;
@@ -76,6 +78,7 @@ namespace LcdFusion
         private System.Drawing.Icon _trayIcon;
         private System.Windows.Forms.ToolStripMenuItem _trayOpen, _trayExit;
         private bool _trayHinted;
+        private bool _profileDirty;
         private volatile bool _refreshing;
         private readonly DispatcherTimer _timer;
 
@@ -113,6 +116,7 @@ namespace LcdFusion
             _engine.Start();
             RebuildEditor();
             ApplyPreviewAspect();
+            MarkProfileClean();
             SetStreaming(autoStream);
 
             Loc.Changed += OnLanguageChanged;
@@ -257,8 +261,12 @@ namespace LcdFusion
             PopulateProfiles();
             left.Children.Add(_profileCombo);
             var load = Btn(Loc.T("prof.load"), delegate { LoadSelectedProfile(); }, "BtnGhost"); load.Margin = new Thickness(10, 0, 0, 0); left.Children.Add(load);
+            var save = Btn(Loc.T("prof.save"), delegate { SaveCurrentProfile(); }, "BtnPrimary"); save.Margin = new Thickness(8, 0, 0, 0); left.Children.Add(save);
             var saveAs = Btn(Loc.T("prof.saveAs"), delegate { SaveProfileAs(); }, "BtnGhost"); saveAs.Margin = new Thickness(8, 0, 0, 0); left.Children.Add(saveAs);
             var del = Btn(Loc.T("prof.delete"), delegate { DeleteSelectedProfile(); }, "BtnGhost"); del.Margin = new Thickness(8, 0, 0, 0); left.Children.Add(del);
+            _profileDirtyText = new TextBlock { Foreground = Br("#F5C850"), FontSize = 12, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+            left.Children.Add(_profileDirtyText);
+            UpdateProfileDirtyText();
             grid.Children.Add(left);
 
             _autoStartCheck = new CheckBox { Content = Loc.T("prof.autostart"), IsChecked = _autoStart, Foreground = TextBr, FontSize = 13, VerticalAlignment = VerticalAlignment.Center };
@@ -292,6 +300,7 @@ namespace LcdFusion
             if (p == null) return;
             ApplyProfile(p);
             _currentProfile = name;
+            MarkProfileClean();
             SetStatus(true, Loc.T("prof.loaded") + ": " + name);
         }
 
@@ -307,6 +316,19 @@ namespace LcdFusion
             SetStreaming(p.Streaming);
         }
 
+        private void SaveCurrentProfile()
+        {
+            if (string.IsNullOrEmpty(_currentProfile))
+            {
+                SaveProfileAs();
+                return;
+            }
+            ProfileService.Save(_currentProfile, _engine.Capture(_tgtValk, _tgtThermal, _activeValk));
+            PopulateProfiles();
+            MarkProfileClean();
+            SetStatus(true, Loc.T("prof.saved") + ": " + _currentProfile);
+        }
+
         private void SaveProfileAs()
         {
             string def = string.IsNullOrEmpty(_currentProfile) ? "Profile 1" : _currentProfile;
@@ -315,6 +337,7 @@ namespace LcdFusion
             ProfileService.Save(name, _engine.Capture(_tgtValk, _tgtThermal, _activeValk));
             _currentProfile = name;
             PopulateProfiles();
+            MarkProfileClean();
             SetStatus(true, Loc.T("prof.saved") + ": " + name);
         }
 
@@ -326,6 +349,23 @@ namespace LcdFusion
             if (_currentProfile == name) _currentProfile = "";
             PopulateProfiles();
             SetStatus(true, Loc.T("prof.deleted") + ": " + name);
+        }
+
+        private void MarkProfileDirty()
+        {
+            _profileDirty = true;
+            UpdateProfileDirtyText();
+        }
+
+        private void MarkProfileClean()
+        {
+            _profileDirty = false;
+            UpdateProfileDirtyText();
+        }
+
+        private void UpdateProfileDirtyText()
+        {
+            if (_profileDirtyText != null) _profileDirtyText.Text = _profileDirty ? Loc.T("prof.unsaved") : "";
         }
 
         private void ToggleAutostart(bool on)
@@ -429,7 +469,12 @@ namespace LcdFusion
             _previewBorder = new Border { Background = Br("#05070C"), CornerRadius = new CornerRadius(8), BorderBrush = BorderBr, BorderThickness = new Thickness(1), ClipToBounds = true, HorizontalAlignment = HorizontalAlignment.Center };
             _preview = new Image { Stretch = Stretch.Fill, SnapsToDevicePixels = true };
             RenderOptions.SetBitmapScalingMode(_preview, BitmapScalingMode.HighQuality);
-            _previewBorder.Child = _preview;
+            _previewOverlay = new Canvas { IsHitTestVisible = false };
+            var previewSurface = new Grid();
+            previewSurface.Children.Add(_preview);
+            previewSurface.Children.Add(_previewOverlay);
+            previewSurface.SizeChanged += delegate { RefreshPreviewOverlay(); };
+            _previewBorder.Child = previewSurface;
             _previewBorder.MouseLeftButtonDown += PreviewDown;
             _previewBorder.MouseMove += PreviewMove;
             _previewBorder.MouseLeftButtonUp += PreviewUp;
@@ -481,19 +526,19 @@ namespace LcdFusion
             var bgRow = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
             bgRow.Children.Add(Chip(Loc.T("bg.image"), delegate { PickMedia(false); }));
             bgRow.Children.Add(Chip("GIF", delegate { PickMedia(true); }));
-            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.Color); RebuildEditor(); }));
-            bgRow.Children.Add(Chip(Loc.T("bg.none"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.None); RebuildEditor(); }));
+            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.Color); MarkProfileDirty(); RebuildEditor(); }));
+            bgRow.Children.Add(Chip(Loc.T("bg.none"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.None); MarkProfileDirty(); RebuildEditor(); }));
             _editorPanel.Children.Add(bgRow);
 
             if (scene.Background == BackgroundKind.Image || scene.Background == BackgroundKind.Gif)
             {
                 _editorPanel.Children.Add(new TextBlock { Text = scene.MediaName, Foreground = MutedBr, FontSize = 12, Margin = new Thickness(2, 8, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis });
                 var tr = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
-                tr.Children.Add(Chip("↺ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 270) % 360); RebuildEditor(); }));
-                tr.Children.Add(Chip("↻ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 90) % 360); RebuildEditor(); }));
-                tr.Children.Add(Chip(Loc.T("tf.mirror"), delegate { _engine.Edit(_activeValk, s => s.FlipH = !s.FlipH); }));
-                tr.Children.Add(Chip(scene.Fit == FitMode.Fit ? Loc.T("tf.fit") : Loc.T("tf.fill"), delegate { _engine.Edit(_activeValk, s => s.Fit = s.Fit == FitMode.Fit ? FitMode.Fill : FitMode.Fit); RebuildEditor(); }));
-                tr.Children.Add(Chip(Loc.T("tf.reset"), delegate { _engine.Edit(_activeValk, s => { s.Rotation = 0; s.FlipH = false; s.Scale = 1; s.PanX = 0; s.PanY = 0; }); RebuildEditor(); }));
+                tr.Children.Add(Chip("↺ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 270) % 360); MarkProfileDirty(); RebuildEditor(); }));
+                tr.Children.Add(Chip("↻ 90°", delegate { _engine.Edit(_activeValk, s => s.Rotation = (s.Rotation + 90) % 360); MarkProfileDirty(); RebuildEditor(); }));
+                tr.Children.Add(Chip(Loc.T("tf.mirror"), delegate { _engine.Edit(_activeValk, s => s.FlipH = !s.FlipH); MarkProfileDirty(); }));
+                tr.Children.Add(Chip(scene.Fit == FitMode.Fit ? Loc.T("tf.fit") : Loc.T("tf.fill"), delegate { _engine.Edit(_activeValk, s => s.Fit = s.Fit == FitMode.Fit ? FitMode.Fill : FitMode.Fit); MarkProfileDirty(); RebuildEditor(); }));
+                tr.Children.Add(Chip(Loc.T("tf.reset"), delegate { _engine.Edit(_activeValk, s => { s.Rotation = 0; s.FlipH = false; s.Scale = 1; s.PanX = 0; s.PanY = 0; }); MarkProfileDirty(); RebuildEditor(); }));
                 _editorPanel.Children.Add(tr);
                 _editorPanel.Children.Add(Slider(Loc.T("sl.zoom"), 0.2, 3.0, scene.Scale, v => _engine.Edit(_activeValk, s => s.Scale = v), v => v.ToString("0.00") + "×"));
                 _editorPanel.Children.Add(Slider(Loc.T("sl.rotation"), 0, 360, scene.Rotation, v => _engine.Edit(_activeValk, s => s.Rotation = v), v => ((int)v) + "°"));
@@ -511,8 +556,13 @@ namespace LcdFusion
                 _editorPanel.Children.Add(LayerRow(scene.Overlays[i], index));
             }
 
+            if (scene.Overlays.Count == 0)
+                _editorPanel.Children.Add(new TextBlock { Text = Loc.T("ly.empty"), Foreground = MutedBr, FontSize = 12, Margin = new Thickness(2, 6, 0, 0) });
+
             if (_sel >= 0 && _sel < scene.Overlays.Count)
                 _editorPanel.Children.Add(OverlayEditor(scene.Overlays[_sel]));
+
+            RefreshPreviewOverlay();
         }
 
         private UIElement LayerRow(Overlay o, int index)
@@ -523,7 +573,7 @@ namespace LcdFusion
 
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(new Border { Width = 10, Height = 10, CornerRadius = new CornerRadius(3), Background = WpfColor(o.Color), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
-            row.Children.Add(new TextBlock { Text = LayerLabel(o), Foreground = TextBr, FontSize = 13, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = LayerLabel(o), Foreground = TextBr, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, MaxWidth = 300, TextTrimming = TextTrimming.CharacterEllipsis });
 
             var sel = new Button { Content = row, HorizontalContentAlignment = HorizontalAlignment.Left, HorizontalAlignment = HorizontalAlignment.Stretch };
             sel.Style = (Style)FindResource("BtnGhost");
@@ -532,11 +582,13 @@ namespace LcdFusion
             Grid.SetColumn(sel, 0);
             grid.Children.Add(sel);
 
-            var remove = new Button { Content = "✕", ToolTip = Loc.T("ov.remove"), Margin = new Thickness(8, 0, 0, 0), MinWidth = 42 };
-            remove.Style = (Style)FindResource("BtnDanger");
-            remove.Click += delegate { RemoveOverlayAt(index); };
-            Grid.SetColumn(remove, 1);
-            grid.Children.Add(remove);
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(8, 0, 0, 0) };
+            actions.Children.Add(MiniLayerButton("Up", Loc.T("ov.moveUp"), "BtnChip", index > 0, delegate { MoveOverlay(index, -1); }));
+            actions.Children.Add(MiniLayerButton("Dn", Loc.T("ov.moveDown"), "BtnChip", index < _engine.Scene(_activeValk).Overlays.Count - 1, delegate { MoveOverlay(index, 1); }));
+            actions.Children.Add(MiniLayerButton("Copy", Loc.T("ov.duplicate"), "BtnChip", true, delegate { DuplicateOverlayAt(index); }));
+            actions.Children.Add(MiniLayerButton("X", Loc.T("ov.remove"), "BtnDanger", true, delegate { RemoveOverlayAt(index); }));
+            Grid.SetColumn(actions, 1);
+            grid.Children.Add(actions);
 
             return grid;
         }
@@ -546,6 +598,7 @@ namespace LcdFusion
             var box = new Border { Background = Panel, CornerRadius = new CornerRadius(10), Padding = new Thickness(14), Margin = new Thickness(0, 6, 0, 0), BorderBrush = SoftBr, BorderThickness = new Thickness(1) };
             var stack = new StackPanel();
 
+            stack.Children.Add(new TextBlock { Text = Loc.T("ov.properties") + " - " + LayerLabel(o), Foreground = TextBr, FontSize = 13, FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 0, 0, 10) });
             stack.Children.Add(new TextBlock { Text = Loc.T("ov.type"), Foreground = MutedBr, FontSize = 12 });
             var combo = new ComboBox { Margin = new Thickness(0, 5, 0, 0) };
             for (int i = 0; i < MetricKinds.Length; i++) combo.Items.Add(MetricName(i));
@@ -555,6 +608,7 @@ namespace LcdFusion
                 int idx = combo.SelectedIndex;
                 if (idx < 0) return;
                 _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Kind = MetricKinds[idx]; });
+                MarkProfileDirty();
                 RebuildEditor();
             };
             stack.Children.Add(combo);
@@ -562,7 +616,7 @@ namespace LcdFusion
             if (o.Kind == OverlayKind.Text)
             {
                 var tb = new TextBox { Text = o.Text, Margin = new Thickness(0, 10, 0, 0) };
-                tb.TextChanged += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Text = tb.Text; }); };
+                tb.TextChanged += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Text = tb.Text; }); MarkProfileDirty(); };
                 stack.Children.Add(tb);
             }
 
@@ -577,17 +631,17 @@ namespace LcdFusion
                 bool selected = SameColor(o.Color, hex);
                 var sw = new Button { Width = 28, Height = 28, Margin = new Thickness(0, 0, 9, 0), Background = Br(hex), BorderBrush = selected ? AccentBr : SoftBr, BorderThickness = new Thickness(selected ? 2 : 1), Cursor = Cursors.Hand, ToolTip = SwatchName(i) };
                 sw.Template = SwatchTemplate();
-                sw.Click += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Color = Sd(hex); }); RebuildEditor(); };
+                sw.Click += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Color = Sd(hex); }); MarkProfileDirty(); RebuildEditor(); };
                 colors.Children.Add(sw);
             }
             stack.Children.Add(colors);
 
             var bottom = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
             var labelToggle = new CheckBox { Content = Loc.T("ov.label"), IsChecked = o.ShowLabel, Foreground = TextBr, FontSize = 13, Margin = new Thickness(0, 4, 16, 0), VerticalAlignment = VerticalAlignment.Center };
-            labelToggle.Checked += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].ShowLabel = true; }); };
-            labelToggle.Unchecked += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].ShowLabel = false; }); };
+            labelToggle.Checked += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].ShowLabel = true; }); MarkProfileDirty(); RefreshPreviewOverlay(); };
+            labelToggle.Unchecked += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].ShowLabel = false; }); MarkProfileDirty(); RefreshPreviewOverlay(); };
             bottom.Children.Add(labelToggle);
-            bottom.Children.Add(Chip(Loc.T("ov.center"), delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) { s.Overlays[_sel].X = 0.5; s.Overlays[_sel].Y = 0.5; } }); }));
+            bottom.Children.Add(Chip(Loc.T("ov.center"), delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) { s.Overlays[_sel].X = 0.5; s.Overlays[_sel].Y = 0.5; } }); MarkProfileDirty(); RefreshPreviewOverlay(); }));
             stack.Children.Add(bottom);
 
             box.Child = stack;
@@ -606,6 +660,7 @@ namespace LcdFusion
             if (dialog.ShowDialog(this) != true) return;
             if (gif) _engine.LoadGif(_activeValk, dialog.FileName);
             else _engine.LoadImage(_activeValk, dialog.FileName);
+            MarkProfileDirty();
             RebuildEditor();
         }
 
@@ -618,6 +673,7 @@ namespace LcdFusion
                 s.Overlays.Add(o);
                 _sel = s.Overlays.Count - 1;
             });
+            MarkProfileDirty();
             RebuildEditor();
         }
 
@@ -626,6 +682,37 @@ namespace LcdFusion
             _engine.Edit(_activeValk, s => { if (index >= 0 && index < s.Overlays.Count) s.Overlays.RemoveAt(index); });
             if (_sel == index) _sel = -1;
             else if (_sel > index) _sel--;
+            MarkProfileDirty();
+            RebuildEditor();
+        }
+
+        private void DuplicateOverlayAt(int index)
+        {
+            _engine.Edit(_activeValk, s =>
+            {
+                if (index < 0 || index >= s.Overlays.Count) return;
+                Overlay copy = s.Overlays[index].Clone();
+                copy.X = Clamp01(copy.X + 0.06);
+                copy.Y = Clamp01(copy.Y + 0.06);
+                s.Overlays.Insert(index + 1, copy);
+                _sel = index + 1;
+            });
+            MarkProfileDirty();
+            RebuildEditor();
+        }
+
+        private void MoveOverlay(int index, int delta)
+        {
+            _engine.Edit(_activeValk, s =>
+            {
+                int next = index + delta;
+                if (index < 0 || index >= s.Overlays.Count || next < 0 || next >= s.Overlays.Count) return;
+                Overlay item = s.Overlays[index];
+                s.Overlays.RemoveAt(index);
+                s.Overlays.Insert(next, item);
+                _sel = next;
+            });
+            MarkProfileDirty();
             RebuildEditor();
         }
 
@@ -633,6 +720,7 @@ namespace LcdFusion
         {
             if (_activeValk) _tgtValk = on; else _tgtThermal = on;
             _engine.SetTargets(_tgtValk, _tgtThermal);
+            MarkProfileDirty();
         }
 
         private void SwitchTab(bool valkyrie)
@@ -710,12 +798,15 @@ namespace LcdFusion
             {
                 double cx = Clamp01(fx), cy = Clamp01(fy);
                 _engine.Edit(_activeValk, s => { if (_sel >= 0 && _sel < s.Overlays.Count) { s.Overlays[_sel].X = cx; s.Overlays[_sel].Y = cy; } });
+                MarkProfileDirty();
+                RefreshPreviewOverlay();
             }
             else if (_drag == DragMode.Pan)
             {
                 double nx = _panOrigX + (fx - _dragStartX);
                 double ny = _panOrigY + (fy - _dragStartY);
                 _engine.Edit(_activeValk, s => { s.PanX = nx; s.PanY = ny; });
+                MarkProfileDirty();
             }
         }
 
@@ -723,6 +814,78 @@ namespace LcdFusion
         {
             _drag = DragMode.None;
             _previewBorder.ReleaseMouseCapture();
+        }
+
+        private void RefreshPreviewOverlay()
+        {
+            if (_previewOverlay == null) return;
+            _previewOverlay.Children.Clear();
+            double w = _previewOverlay.ActualWidth;
+            double h = _previewOverlay.ActualHeight;
+            if (w <= 0 || h <= 0) return;
+
+            LcdScene scene = _engine.Scene(_activeValk);
+            for (int i = 0; i < scene.Overlays.Count; i++)
+            {
+                Overlay o = scene.Overlays[i];
+                double x = Clamp01(o.X) * w;
+                double y = Clamp01(o.Y) * h;
+                bool selected = i == _sel;
+
+                if (selected)
+                {
+                    double boxW = Math.Max(46, o.Size * h * (o.Kind == OverlayKind.CpuCores ? 2.0 : 3.3));
+                    double boxH = Math.Max(30, o.Size * h * (o.ShowLabel ? 1.65 : 1.15));
+                    var box = new Rectangle
+                    {
+                        Width = boxW,
+                        Height = boxH,
+                        RadiusX = 8,
+                        RadiusY = 8,
+                        Fill = Br("#226C8CFF"),
+                        Stroke = AccentBr,
+                        StrokeThickness = 1.5,
+                        StrokeDashArray = new DoubleCollection { 4, 3 }
+                    };
+                    Canvas.SetLeft(box, x - boxW / 2);
+                    Canvas.SetTop(box, y - boxH / 2);
+                    _previewOverlay.Children.Add(box);
+
+                    AddHandle(x - boxW / 2, y - boxH / 2);
+                    AddHandle(x + boxW / 2, y - boxH / 2);
+                    AddHandle(x - boxW / 2, y + boxH / 2);
+                    AddHandle(x + boxW / 2, y + boxH / 2);
+                }
+
+                var dot = new Ellipse
+                {
+                    Width = selected ? 12 : 9,
+                    Height = selected ? 12 : 9,
+                    Fill = WpfColor(o.Color),
+                    Stroke = selected ? AccentBr : Br("#0A0D15"),
+                    StrokeThickness = selected ? 2 : 1,
+                    Opacity = selected ? 1.0 : 0.75
+                };
+                Canvas.SetLeft(dot, x - dot.Width / 2);
+                Canvas.SetTop(dot, y - dot.Height / 2);
+                _previewOverlay.Children.Add(dot);
+            }
+        }
+
+        private void AddHandle(double x, double y)
+        {
+            var handle = new Border
+            {
+                Width = 8,
+                Height = 8,
+                CornerRadius = new CornerRadius(3),
+                Background = AccentBr,
+                BorderBrush = Br("#0A0D15"),
+                BorderThickness = new Thickness(1)
+            };
+            Canvas.SetLeft(handle, x - 4);
+            Canvas.SetTop(handle, y - 4);
+            _previewOverlay.Children.Add(handle);
         }
 
         private void Frac(MouseEventArgs e, out double fx, out double fy)
@@ -784,6 +947,7 @@ namespace LcdFusion
         {
             if (_activeValk) { _previewBorder.Width = 384; _previewBorder.Height = 288; _previewCaption.Text = "Valkyrie · 320 × 240"; }
             else { _previewBorder.Width = 760; _previewBorder.Height = 183; _previewCaption.Text = "Thermalright · 1920 × 462"; }
+            RefreshPreviewOverlay();
         }
 
         // Device status uses a slow WMI query (Win32_PnPEntity) plus process lookups.
@@ -857,7 +1021,7 @@ namespace LcdFusion
             head.Children.Add(valueText);
             stack.Children.Add(head);
             var slider = new Slider { Minimum = min, Maximum = max, Value = v0, Margin = new Thickness(0, 3, 0, 0) };
-            slider.ValueChanged += delegate { valueText.Text = fmt(slider.Value); onChange(slider.Value); };
+            slider.ValueChanged += delegate { valueText.Text = fmt(slider.Value); onChange(slider.Value); MarkProfileDirty(); RefreshPreviewOverlay(); };
             stack.Children.Add(slider);
             return stack;
         }
@@ -879,6 +1043,14 @@ namespace LcdFusion
         private Button Btn(string text, RoutedEventHandler handler, string styleKey)
         {
             var b = new Button { Content = text };
+            b.Style = (Style)FindResource(styleKey);
+            b.Click += handler;
+            return b;
+        }
+
+        private Button MiniLayerButton(string text, string tooltip, string styleKey, bool enabled, RoutedEventHandler handler)
+        {
+            var b = new Button { Content = text, ToolTip = tooltip, MinWidth = 34, Margin = new Thickness(0, 0, 6, 0), IsEnabled = enabled };
             b.Style = (Style)FindResource(styleKey);
             b.Click += handler;
             return b;
