@@ -1,10 +1,7 @@
 # Build output
-LcdFusion/bin/
+bin/
+obj/
 LcdFusion-*-portable.zip
-
-# Vendored package archives (the net45 DLL is kept; these aren't needed)
-tools/libusbdotnet/*.nupkg
-tools/libusbdotnet/*.zip
 *.pdb
 
 # OS / editor cruft

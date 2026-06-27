@@ -56,14 +56,15 @@ Profiles and settings are stored under `%APPDATA%\LcdFusion\` (`profiles\*.xml`,
 
 ## Build from source
 
-There is **no `.csproj`** — the app is compiled directly with `csc` by a small script:
+SDK‑style project targeting **.NET Framework 4.8** (WPF + Windows Forms, x86). With the [.NET SDK](https://dotnet.microsoft.com/download) installed:
 
 ```powershell
-cd LcdFusion
-.\build.ps1
+dotnet build LcdFusion/LcdFusion.csproj -c Release
+# or produce the portable zip (exe + dependencies):
+./pack.ps1 -Version 1.0.0
 ```
 
-It uses the in‑box .NET Framework compiler (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`), x86, and produces `LcdFusion\bin\LcdFusion.exe` (the required DLLs are copied next to it). Add any new `.cs` file to the source list in [`LcdFusion/build.ps1`](LcdFusion/build.ps1) or it won’t be compiled in.
+LibUsbDotNet is restored from NuGet; LibreHardwareMonitor / HidSharp are referenced from `tools/`. CI builds and publishes a release on every push to `main`.
 
 ---
 
@@ -115,7 +116,7 @@ If you have a panel but can’t capture it, open an issue with the `VID:PID`, a 
 
 ```
 LcdFusion/                      # the app
-  build.ps1                     # csc build script (no .csproj)
+  LcdFusion.csproj              # SDK-style project (net48, WPF + WinForms)
   app.manifest, app.ico         # elevation manifest + icon
   MainWindow.cs                 # WPF UI (built in code)
   Theme.cs                      # dark design system (XAML resource dictionary)
