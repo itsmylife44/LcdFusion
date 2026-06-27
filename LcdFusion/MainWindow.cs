@@ -635,7 +635,7 @@ namespace LcdFusion
 
         private string LicenseNoticeText()
         {
-            string thirdParty = ReadLegalFile("THIRD_PARTY_NOTICES.md", Path.Combine("LcdFusion", "THIRD_PARTY_NOTICES.md"));
+            string thirdParty = ReadLegalFile("THIRD_PARTY_NOTICES.md", System.IO.Path.Combine("LcdFusion", "THIRD_PARTY_NOTICES.md"));
             string license = ReadLegalFile("LICENSE.txt", "LICENSE");
             string bundled = ReadBundledLicenseIndex();
             return
@@ -652,13 +652,13 @@ namespace LcdFusion
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             foreach (string rel in relativePaths)
             {
-                string path = Path.Combine(baseDir, rel);
+                string path = System.IO.Path.Combine(baseDir, rel);
                 try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
             }
             string cwd = Directory.GetCurrentDirectory();
             foreach (string rel in relativePaths)
             {
-                string path = Path.Combine(cwd, rel);
+                string path = System.IO.Path.Combine(cwd, rel);
                 try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
             }
             return Loc.T("legal.fileMissing");
@@ -666,8 +666,8 @@ namespace LcdFusion
 
         private string ReadBundledLicenseIndex()
         {
-            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "licenses");
-            if (!Directory.Exists(dir)) dir = Path.Combine(Directory.GetCurrentDirectory(), "LcdFusion", "licenses");
+            string dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "licenses");
+            if (!Directory.Exists(dir)) dir = System.IO.Path.Combine(Directory.GetCurrentDirectory(), "LcdFusion", "licenses");
             if (!Directory.Exists(dir)) return "";
             try
             {
@@ -675,7 +675,7 @@ namespace LcdFusion
                 Array.Sort(files, StringComparer.OrdinalIgnoreCase);
                 var text = new System.Text.StringBuilder();
                 text.AppendLine("Bundled license files");
-                foreach (string file in files) text.AppendLine("- " + Path.GetFileName(file));
+                foreach (string file in files) text.AppendLine("- " + System.IO.Path.GetFileName(file));
                 return text.ToString();
             }
             catch { return ""; }
