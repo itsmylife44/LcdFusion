@@ -76,6 +76,7 @@ namespace LcdFusion
         private System.Drawing.Icon _trayIcon;
         private System.Windows.Forms.ToolStripMenuItem _trayOpen, _trayExit;
         private bool _trayHinted;
+        private volatile bool _refreshing;
         private readonly DispatcherTimer _timer;
 
         public MainWindow()
@@ -785,18 +786,41 @@ namespace LcdFusion
             else { _previewBorder.Width = 760; _previewBorder.Height = 183; _previewCaption.Text = "Thermalright · 1920 × 462"; }
         }
 
+        // Device status uses a slow WMI query (Win32_PnPEntity) plus process lookups.
+        // Run it on a background thread so dragging/resizing the window never blocks the UI.
         private void RefreshStatus()
         {
-            _snapshot = DeviceService.Read();
-            SetDevice(_snapshot.Valkyrie, _valkDot, _valkState);
-            SetDevice(_snapshot.Thermalright, _trDot, _trState);
-            bool myth = VendorService.IsMythCoolRunning();
-            bool trcc = VendorService.IsTrccRunning();
-            int healthy = (_snapshot.Valkyrie.IsHealthy ? 1 : 0) + (_snapshot.Thermalright.IsHealthy ? 1 : 0);
+            if (_refreshing) return;
+            _refreshing = true;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                DeviceSnapshot snap = null;
+                bool myth = false, trcc = false;
+                try
+                {
+                    snap = DeviceService.Read();
+                    myth = VendorService.IsMythCoolRunning();
+                    trcc = VendorService.IsTrccRunning();
+                }
+                catch { }
+                Dispatcher.BeginInvoke(new Action(delegate
+                {
+                    try { if (snap != null) ApplyStatus(snap, myth, trcc); }
+                    finally { _refreshing = false; }
+                }));
+            });
+        }
+
+        private void ApplyStatus(DeviceSnapshot snap, bool myth, bool trcc)
+        {
+            _snapshot = snap;
+            SetDevice(snap.Valkyrie, _valkDot, _valkState);
+            SetDevice(snap.Thermalright, _trDot, _trState);
+            int healthy = (snap.Valkyrie.IsHealthy ? 1 : 0) + (snap.Thermalright.IsHealthy ? 1 : 0);
             string summary = healthy == 2 ? Loc.T("sum.both") : Loc.T("sum.count", healthy);
             if (myth || trcc)
                 summary = Loc.T("sum.busy", myth && trcc ? "Myth.Cool + TRCC" : myth ? "Myth.Cool" : "TRCC");
-            _summary.Text = summary + "   ·   " + Loc.T("sum.updated") + " " + _snapshot.CheckedAt.ToString("HH:mm:ss");
+            _summary.Text = summary + "   ·   " + Loc.T("sum.updated") + " " + snap.CheckedAt.ToString("HH:mm:ss");
         }
 
         private void SetDevice(DeviceInfo info, Ellipse dot, TextBlock state)
