@@ -143,6 +143,18 @@ tools/                          # libusbdotnet, librehardwaremonitor, USB captur
 
 License texts are in [`LcdFusion/licenses/`](LcdFusion/licenses). These components are redistributed as binaries; their licenses apply to them.
 
+## Legal & licensing
+
+Short version: this project is lawful to build, use and publish.
+
+- **Interoperability.** LCD Fusion was built by *observing* the USB traffic of the vendor apps (black‑box) and re‑implementing the display protocol to interoperate with hardware **you own**. In the EU this is explicitly permitted — Software Directive 2009/24/EC, Art. 5(3) (observe/study/test) and Art. 6 (decompilation for interoperability) — and EULA clauses forbidding it are unenforceable for that purpose (Art. 8). No vendor source code, binaries, firmware or assets are copied or redistributed. Protocols, interfaces and file formats are not themselves protected by copyright (cf. CJEU C‑406/10, *SAS Institute v World Programming*).
+- **Trademarks.** “Valkyrie”, “Thermalright”, “Myth.Cool” and “TRCC” are used only descriptively to indicate compatibility (nominative/referential use). This is **not** an official product and is not affiliated with or endorsed by those vendors; no vendor logos are used.
+- **No DRM is circumvented** and **no personal data is processed** (no telemetry, no network calls).
+- **Bundled OSS** keeps its own licenses — LibreHardwareMonitor (MPL‑2.0), HidSharp (Apache‑2.0), LibUsbDotNet (LGPL‑3.0) — shipped as separate, replaceable DLLs; see [`THIRD_PARTY_NOTICES.md`](LcdFusion/THIRD_PARTY_NOTICES.md).
+- **Use at your own risk.** Provided “as is” (MIT, no warranty). Driving the LCD directly may affect a device’s warranty.
+
+*This is an informed summary, not legal advice.*
+
 ## License
 
 Released under the [MIT License](LICENSE) © 2026 itsmylife44. The bundled third‑party components keep their own licenses (listed above and under [`LcdFusion/licenses/`](LcdFusion/licenses)).

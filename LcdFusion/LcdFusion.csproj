@@ -11,11 +11,7 @@
     <StartupObject>LcdFusion.Program</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <!-- Keep the hand-written AssemblyInfo.cs instead of the SDK-generated one. -->
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <Deterministic>true</Deterministic>
-    <LangVersion>latest</LangVersion>
-    <Nullable>disable</Nullable>
+    <!-- Shared metadata (Product/Company/Version/LangVersion...) is in ../Directory.Build.props. -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
