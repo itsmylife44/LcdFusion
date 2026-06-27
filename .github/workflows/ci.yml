@@ -1,7 +1,7 @@
 name: CI build check
 
-# Validates the SDK-style project builds with `dotnet`. Runs only on the
-# modernization branch for now (no release side effects).
+# Validates the SDK-style project builds and packages with `dotnet`. Runs only on
+# the modernization branch for now (no release side effects).
 on:
   push:
     branches: [ modernize-sdk ]
@@ -20,8 +20,11 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore
-        run: dotnet restore LcdFusion/LcdFusion.csproj
+      - name: Build & package
+        shell: pwsh
+        run: ./pack.ps1 -Version 0.0.0-ci
 
-      - name: Build
-        run: dotnet build LcdFusion/LcdFusion.csproj -c Release --no-restore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable
+          path: LcdFusion-0.0.0-ci-portable.zip
