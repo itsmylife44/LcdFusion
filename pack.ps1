@@ -1,4 +1,7 @@
-param([string]$Version = "1.0.0")
+param(
+  [string]$Version = "1.0.0",
+  [string]$ChangelogPath = ""
+)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $proj = Join-Path $root 'LcdFusion\LcdFusion.csproj'
@@ -21,6 +24,10 @@ Get-ChildItem $pub -File | Where-Object { $_.Extension -ne '.pdb' } | ForEach-Ob
 Copy-Item (Join-Path $root 'README.md') $stage
 Copy-Item (Join-Path $root 'LcdFusion\THIRD_PARTY_NOTICES.md') $stage
 Copy-Item (Join-Path $root 'LcdFusion\licenses\*') (Join-Path $stage 'licenses')
+if ($ChangelogPath) {
+  $resolvedChangelog = Resolve-Path $ChangelogPath -ErrorAction Stop
+  Copy-Item $resolvedChangelog (Join-Path $stage 'CHANGELOG.md')
+}
 
 # 3) zip
 $zip = Join-Path $root "LcdFusion-$Version-portable.zip"

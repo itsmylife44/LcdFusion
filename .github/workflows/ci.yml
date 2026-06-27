@@ -4,6 +4,13 @@ name: CI build check
 # Acts as a pull-request gate (no release side effects).
 on:
   pull_request:
+    paths:
+      - 'Directory.Build.props'
+      - 'LcdFusion.slnx'
+      - 'LcdFusion/**'
+      - 'protocol/**'
+      - 'tools/**'
+      - 'pack.ps1'
   workflow_dispatch:
 
 permissions:

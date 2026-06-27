@@ -1,10 +1,17 @@
 name: Build & Release
 
-# Every push to main produces a new versioned portable build and publishes it
-# as a GitHub Release. Version = 1.0.<run number> (monotonic, one per change).
+# Code/build changes on main produce a new versioned portable build and publish
+# it as a GitHub Release. Version = 1.0.<run number> (monotonic per run).
 on:
   push:
     branches: [ main ]
+    paths:
+      - 'Directory.Build.props'
+      - 'LcdFusion.slnx'
+      - 'LcdFusion/**'
+      - 'protocol/**'
+      - 'tools/**'
+      - 'pack.ps1'
   workflow_dispatch:
 
 permissions:
@@ -19,16 +26,45 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '9.0.x'
 
+      - name: Generate changelog
+        shell: pwsh
+        run: |
+          $previousTag = git describe --tags --abbrev=0 2>$null
+          if ($LASTEXITCODE -eq 0 -and $previousTag) {
+            $range = "$previousTag..HEAD"
+            $intro = "Changes since $previousTag"
+          } else {
+            $range = "HEAD"
+            $intro = "Changes in this release"
+          }
+
+          $commits = git log $range --pretty=format:"- %s (%h)"
+          if (-not $commits) {
+            $commits = "- Automated build from ${{ github.sha }}"
+          }
+
+          @(
+            "# LCD Fusion changelog"
+            ""
+            $intro
+            ""
+            $commits
+            ""
+            "Commit: ${{ github.sha }}"
+          ) | Set-Content -Path RELEASE_CHANGELOG.md -Encoding utf8
+
       - name: Build & package portable
         shell: pwsh
         run: |
           $v = "1.0.${{ github.run_number }}"
-          ./pack.ps1 -Version $v
+          ./pack.ps1 -Version $v -ChangelogPath RELEASE_CHANGELOG.md
           "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Publish GitHub Release
@@ -38,4 +74,4 @@ jobs:
         run: |
           gh release create "v$env:VERSION" "LcdFusion-$env:VERSION-portable.zip" `
             --title "LCD Fusion v$env:VERSION" `
-            --notes "Automated portable build from commit ${{ github.sha }}.`n`nUnzip and run LcdFusion.exe (Windows 10/11, runs elevated for CPU temperature)."
+            --notes-file RELEASE_CHANGELOG.md
