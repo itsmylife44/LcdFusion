@@ -11,19 +11,30 @@ namespace LcdFusion
     {
         public bool Available;
         public string Source = "Nessuna sorgente";
-        public bool HasCpuTemp;
-        public double CpuTempC;
-        public bool HasGpuTemp;
-        public double GpuTempC;
-        public bool HasCpuLoad;
-        public double CpuLoad;
-        public bool HasGpuLoad;
-        public double GpuLoad;
+
+        // CPU
+        public bool HasCpuTemp; public double CpuTempC;
+        public bool HasCpuLoad; public double CpuLoad;
+        public bool HasCpuClock; public double CpuClockMhz;
+        public bool HasCpuPower; public double CpuPowerW;
+        public double[] CpuCoreLoads;
+
+        // GPU (primary / discrete)
+        public string GpuName = "";
+        public bool HasGpuTemp; public double GpuTempC;
+        public bool HasGpuLoad; public double GpuLoad;
+        public bool HasGpuClock; public double GpuClockMhz;
+        public bool HasGpuPower; public double GpuPowerW;
+        public bool HasGpuVram; public double GpuVramUsedMb; public double GpuVramTotalMb;
+        public bool HasGpuFan; public double GpuFanRpm;
+
+        // RAM
+        public bool HasRamLoad; public double RamLoad; public double RamUsedGb; public double RamTotalGb;
     }
 
-    // Reads CPU/GPU sensors. Primary source is the bundled LibreHardwareMonitorLib
-    // (self-contained, needs admin for Ryzen CPU temperature). Falls back to a running
-    // HWiNFO (shared memory) or LibreHardwareMonitor/OpenHardwareMonitor (WMI).
+    // Reads CPU/GPU/RAM sensors. Primary source is the bundled LibreHardwareMonitorLib
+    // (self-contained, needs admin for full CPU data). Falls back to a running HWiNFO
+    // (shared memory) or LibreHardwareMonitor / OpenHardwareMonitor (WMI) for temp/load.
     internal static class SensorService
     {
         public static SensorReading Read()
@@ -80,79 +91,155 @@ namespace LcdFusion
             {
                 if (_computer == null)
                 {
-                    Computer computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = true };
+                    Computer computer = new Computer { IsCpuEnabled = true, IsGpuEnabled = true, IsMemoryEnabled = true };
                     computer.Open();
                     _computer = computer;
                 }
                 _computer.Accept(Visitor);
 
-                List<KeyValuePair<string, double>> cpuTemps = new List<KeyValuePair<string, double>>();
-                List<KeyValuePair<string, double>> gpuTemps = new List<KeyValuePair<string, double>>();
-                double cpuLoad = double.NaN, gpuLoad = double.NaN;
-
-                foreach (IHardware hardware in _computer.Hardware)
+                IHardware cpu = null, memory = null;
+                List<IHardware> gpus = new List<IHardware>();
+                foreach (IHardware h in _computer.Hardware)
                 {
-                    bool isCpu = hardware.HardwareType == HardwareType.Cpu;
-                    bool isGpu = hardware.HardwareType == HardwareType.GpuAmd ||
-                                 hardware.HardwareType == HardwareType.GpuNvidia ||
-                                 hardware.HardwareType == HardwareType.GpuIntel;
-                    if (!isCpu && !isGpu) continue;
-
-                    foreach (ISensor sensor in hardware.Sensors)
-                    {
-                        if (sensor.Value == null) continue;
-                        double value = (double)sensor.Value.Value;
-                        string name = sensor.Name ?? "";
-
-                        if (sensor.SensorType == SensorType.Temperature)
-                        {
-                            if (isCpu) cpuTemps.Add(new KeyValuePair<string, double>(name, value));
-                            else gpuTemps.Add(new KeyValuePair<string, double>(name, value));
-                        }
-                        else if (sensor.SensorType == SensorType.Load)
-                        {
-                            string lower = name.ToLowerInvariant();
-                            if (isCpu && lower.Contains("total") && double.IsNaN(cpuLoad)) cpuLoad = value;
-                            else if (isGpu && lower.Contains("core") && double.IsNaN(gpuLoad)) gpuLoad = value;
-                        }
-                    }
+                    if (h.HardwareType == HardwareType.Cpu) { if (cpu == null) cpu = h; }
+                    else if (h.HardwareType == HardwareType.Memory) { if (memory == null) memory = h; }
+                    else if (h.HardwareType == HardwareType.GpuAmd || h.HardwareType == HardwareType.GpuNvidia || h.HardwareType == HardwareType.GpuIntel)
+                        gpus.Add(h);
                 }
 
-                double cpuTemp = PickCpuTemp(cpuTemps);
-                double gpuTemp = PickGpuTemp(gpuTemps);
-                Fill(reading, "LibreHardwareMonitor", cpuTemp, gpuTemp, cpuLoad, gpuLoad);
+                if (cpu != null) ReadCpu(cpu, reading);
+                IHardware gpu = PickGpu(gpus);
+                if (gpu != null) ReadGpu(gpu, reading);
+                if (memory != null) ReadMemory(memory, reading);
+
+                reading.Available = reading.HasCpuTemp || reading.HasCpuLoad || reading.HasGpuTemp || reading.HasGpuLoad;
+                if (reading.Available) reading.Source = "LibreHardwareMonitor";
             }
             return reading;
         }
 
-        private static double PickCpuTemp(List<KeyValuePair<string, double>> temps)
+        private static void ReadCpu(IHardware cpu, SensorReading r)
         {
-            return PickByPriority(temps, new string[] { "tctl", "tdie", "package", "core (tctl" }, "ccd");
-        }
-
-        private static double PickGpuTemp(List<KeyValuePair<string, double>> temps)
-        {
-            return PickByPriority(temps, new string[] { "gpu core", "core", "edge", "gpu" }, "hot");
-        }
-
-        private static double PickByPriority(List<KeyValuePair<string, double>> temps, string[] preferred, string avoid)
-        {
-            if (temps.Count == 0) return double.NaN;
-            int bestScore = int.MinValue;
-            double best = double.NaN;
-            foreach (KeyValuePair<string, double> pair in temps)
+            List<KeyValuePair<int, double>> cores = new List<KeyValuePair<int, double>>();
+            double bestTemp = double.NaN; int bestTempScore = int.MinValue;
+            double maxClock = double.NaN;
+            foreach (ISensor s in cpu.Sensors)
             {
-                string lower = pair.Key.ToLowerInvariant();
-                int score = 0;
-                for (int i = 0; i < preferred.Length; i++)
-                    if (lower.Contains(preferred[i])) { score = preferred.Length - i + 1; break; }
-                if (avoid != null && lower.Contains(avoid)) score -= 5;
-                if (score > bestScore) { bestScore = score; best = pair.Value; }
+                if (s.Value == null) continue;
+                double v = (double)s.Value.Value;
+                string low = (s.Name ?? "").ToLowerInvariant();
+                switch (s.SensorType)
+                {
+                    case SensorType.Temperature:
+                        int sc = (low.Contains("tctl") || low.Contains("tdie")) ? 3 : (low.Contains("package") ? 2 : (low.Contains("ccd") ? 0 : 1));
+                        if (sc > bestTempScore) { bestTempScore = sc; bestTemp = v; }
+                        break;
+                    case SensorType.Load:
+                        if (low == "cpu total") { r.HasCpuLoad = true; r.CpuLoad = v; }
+                        else { int idx = CoreIndex(s.Name); if (idx > 0) cores.Add(new KeyValuePair<int, double>(idx, v)); }
+                        break;
+                    case SensorType.Clock:
+                        if (low.StartsWith("core") && !double.IsNaN(v))
+                            if (double.IsNaN(maxClock) || v > maxClock) maxClock = v;
+                        break;
+                    case SensorType.Power:
+                        if (low == "package") { r.HasCpuPower = true; r.CpuPowerW = v; }
+                        break;
+                }
             }
-            return best;
+            if (!double.IsNaN(bestTemp)) { r.HasCpuTemp = true; r.CpuTempC = bestTemp; }
+            if (!double.IsNaN(maxClock)) { r.HasCpuClock = true; r.CpuClockMhz = maxClock; }
+            if (cores.Count > 0)
+            {
+                cores.Sort(delegate (KeyValuePair<int, double> a, KeyValuePair<int, double> b) { return a.Key.CompareTo(b.Key); });
+                double[] arr = new double[cores.Count];
+                for (int i = 0; i < cores.Count; i++) arr[i] = cores[i].Value;
+                r.CpuCoreLoads = arr;
+            }
         }
 
-        // ---- HWiNFO shared memory (HWiNFO_SENS_SM2) ---------------------------------
+        // Among multiple GPUs (iGPU + dGPU), pick the discrete one: the largest VRAM.
+        private static IHardware PickGpu(List<IHardware> gpus)
+        {
+            if (gpus.Count == 0) return null;
+            if (gpus.Count == 1) return gpus[0];
+            IHardware best = null; double bestVram = -1;
+            foreach (IHardware g in gpus)
+            {
+                double vram = 0;
+                foreach (ISensor s in g.Sensors)
+                    if (s.SensorType == SensorType.SmallData && s.Value != null && (s.Name ?? "").ToLowerInvariant() == "gpu memory total")
+                        vram = (double)s.Value.Value;
+                if (vram > bestVram) { bestVram = vram; best = g; }
+            }
+            return best ?? gpus[0];
+        }
+
+        private static void ReadGpu(IHardware gpu, SensorReading r)
+        {
+            r.GpuName = gpu.Name ?? "";
+            double tempCore = double.NaN, tempAny = double.NaN, power = double.NaN, vramUsed = double.NaN, vramTotal = double.NaN;
+            foreach (ISensor s in gpu.Sensors)
+            {
+                if (s.Value == null) continue;
+                double v = (double)s.Value.Value;
+                string low = (s.Name ?? "").ToLowerInvariant();
+                switch (s.SensorType)
+                {
+                    case SensorType.Temperature:
+                        if (low == "gpu core") tempCore = v; else if (double.IsNaN(tempAny)) tempAny = v;
+                        break;
+                    case SensorType.Load:
+                        if (low == "gpu core") { r.HasGpuLoad = true; r.GpuLoad = v; }
+                        break;
+                    case SensorType.Clock:
+                        if (low == "gpu core") { r.HasGpuClock = true; r.GpuClockMhz = v; }
+                        break;
+                    case SensorType.Power:
+                        if (low.Contains("package") || low.Contains("ppt") || low == "gpu power") { if (double.IsNaN(power) || v > power) power = v; }
+                        else if (double.IsNaN(power) && low.Contains("gpu")) power = v;
+                        break;
+                    case SensorType.Fan:
+                        if (low.Contains("fan")) { r.HasGpuFan = true; r.GpuFanRpm = v; }
+                        break;
+                    case SensorType.SmallData:
+                        if (low == "gpu memory used") vramUsed = v;
+                        else if (low == "gpu memory total") vramTotal = v;
+                        break;
+                }
+            }
+            double t = !double.IsNaN(tempCore) ? tempCore : tempAny;
+            if (!double.IsNaN(t)) { r.HasGpuTemp = true; r.GpuTempC = t; }
+            if (!double.IsNaN(power)) { r.HasGpuPower = true; r.GpuPowerW = power; }
+            if (!double.IsNaN(vramUsed) && !double.IsNaN(vramTotal) && vramTotal > 0)
+            { r.HasGpuVram = true; r.GpuVramUsedMb = vramUsed; r.GpuVramTotalMb = vramTotal; }
+        }
+
+        private static void ReadMemory(IHardware mem, SensorReading r)
+        {
+            double used = double.NaN, avail = double.NaN;
+            foreach (ISensor s in mem.Sensors)
+            {
+                if (s.Value == null) continue;
+                double v = (double)s.Value.Value;
+                string low = (s.Name ?? "").ToLowerInvariant();
+                if (s.SensorType == SensorType.Load && low == "memory") { r.HasRamLoad = true; r.RamLoad = v; }
+                else if (s.SensorType == SensorType.Data && low == "memory used") used = v;
+                else if (s.SensorType == SensorType.Data && low == "memory available") avail = v;
+            }
+            if (!double.IsNaN(used)) { r.RamUsedGb = used; if (!double.IsNaN(avail)) r.RamTotalGb = used + avail; }
+        }
+
+        private static int CoreIndex(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return -1;
+            int hash = name.IndexOf('#');
+            if (hash < 0) return -1;
+            int n;
+            return int.TryParse(name.Substring(hash + 1).Trim(), out n) ? n : -1;
+        }
+
+        // ---- HWiNFO shared memory (HWiNFO_SENS_SM2) — temp/load fallback ------------
 
         private const int HeaderReadingOffset = 32;
         private const int HeaderReadingSize = 36;
@@ -232,7 +319,7 @@ namespace LcdFusion
 
         private static bool IsGpu(string lower) { return lower.Contains("gpu"); }
 
-        // ---- LibreHardwareMonitor / OpenHardwareMonitor (WMI) -----------------------
+        // ---- LibreHardwareMonitor / OpenHardwareMonitor (WMI) — temp fallback -------
 
         private static SensorReading ReadWmi(string scope, string sourceName)
         {
@@ -259,8 +346,6 @@ namespace LcdFusion
             }
             catch { return reading; }
         }
-
-        // ---- helpers ----------------------------------------------------------------
 
         private static void Fill(SensorReading reading, string source, double cpuTemp, double gpuTemp, double cpuLoad, double gpuLoad)
         {

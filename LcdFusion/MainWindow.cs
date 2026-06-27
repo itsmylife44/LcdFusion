@@ -31,9 +31,14 @@ namespace LcdFusion
         private enum DragMode { None, Overlay, Pan }
 
         private static readonly string[] MetricKeys =
-            { "metric.cpuTemp", "metric.gpuTemp", "metric.cpuLoad", "metric.gpuLoad", "metric.clock", "metric.date", "metric.text" };
+            { "metric.cpuTemp", "metric.gpuTemp", "metric.cpuLoad", "metric.gpuLoad",
+              "metric.cpuClock", "metric.gpuClock", "metric.cpuPower", "metric.gpuPower",
+              "metric.gpuVram", "metric.gpuFan", "metric.ramLoad", "metric.cpuCores",
+              "metric.clock", "metric.date", "metric.text" };
         private static readonly OverlayKind[] MetricKinds =
             { OverlayKind.CpuTemp, OverlayKind.GpuTemp, OverlayKind.CpuLoad, OverlayKind.GpuLoad,
+              OverlayKind.CpuClock, OverlayKind.GpuClock, OverlayKind.CpuPower, OverlayKind.GpuPower,
+              OverlayKind.GpuVram, OverlayKind.GpuFan, OverlayKind.RamLoad, OverlayKind.CpuCores,
               OverlayKind.Clock, OverlayKind.Date, OverlayKind.Text };
         private static readonly string[] SwatchHex = { "#FFFFFF", "#5BE1FF", "#33D69F", "#F5C850", "#FF647C", "#6C8CFF" };
         private static readonly string[] SwatchKeys =

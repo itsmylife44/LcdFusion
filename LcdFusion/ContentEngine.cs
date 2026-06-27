@@ -77,7 +77,7 @@ namespace LcdFusion
     }
 
     internal enum BackgroundKind { None, Color, Image, Gif }
-    internal enum OverlayKind { Text, CpuTemp, GpuTemp, CpuLoad, GpuLoad, Clock, Date }
+    internal enum OverlayKind { Text, CpuTemp, GpuTemp, CpuLoad, GpuLoad, Clock, Date, CpuClock, GpuClock, CpuPower, GpuPower, GpuVram, RamLoad, GpuFan, CpuCores }
     internal enum FitMode { Fit, Fill }
 
     // A movable text/sensor layer drawn on top of the background.
@@ -578,10 +578,54 @@ namespace LcdFusion
                 using (Brush labelBrush = new SolidBrush(Muted))
                     DrawCenteredAt(g, label, labelFont, labelBrush, 0f, -fontPx * 0.55f, w, h);
             }
-            using (Font font = new Font("Segoe UI", fontPx, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (Brush brush = new SolidBrush(o.Color))
-                DrawCenteredAt(g, value, font, brush, 0f, 0f, w, h);
+            if (o.Kind == OverlayKind.CpuCores)
+            {
+                DrawCoreBars(g, o, sensors, h);
+            }
+            else
+            {
+                using (Font font = new Font("Segoe UI", fontPx, FontStyle.Bold, GraphicsUnit.Pixel))
+                using (Brush brush = new SolidBrush(o.Color))
+                    DrawCenteredAt(g, value, font, brush, 0f, 0f, w, h);
+            }
             g.Restore(st);
+        }
+
+        private static void DrawCoreBars(Graphics g, Overlay o, SensorReading s, int h)
+        {
+            double[] loads = s != null ? s.CpuCoreLoads : null;
+            int n = loads != null ? loads.Length : 0;
+            float boxH = Math.Max(10f, (float)(o.Size * h));
+            if (n == 0)
+            {
+                using (Font f = new Font("Segoe UI", Math.Max(8f, boxH * 0.5f), FontStyle.Bold, GraphicsUnit.Pixel))
+                using (Brush b = new SolidBrush(Muted))
+                    DrawCenteredAt(g, "CPU --", f, b, 0f, 0f, 4000, 4000);
+                return;
+            }
+            float barW = boxH * 0.16f;
+            float gap = barW * 0.45f;
+            float totalW = n * barW + (n - 1) * gap;
+            float left = -totalW / 2f;
+            float bottom = boxH / 2f;
+            using (Pen baseline = new Pen(Muted, 1f))
+                g.DrawLine(baseline, left, bottom, left + totalW, bottom);
+            for (int i = 0; i < n; i++)
+            {
+                double load = loads[i];
+                if (load < 0) load = 0; else if (load > 100) load = 100;
+                float bh = (float)(load / 100.0) * boxH;
+                float x = left + i * (barW + gap);
+                using (SolidBrush br = new SolidBrush(LoadColor(load)))
+                    g.FillRectangle(br, x, bottom - bh, barW, bh);
+            }
+        }
+
+        private static Color LoadColor(double v)
+        {
+            if (v < 50) return Color.FromArgb(63, 209, 139);
+            if (v < 80) return Color.FromArgb(245, 200, 80);
+            return Color.FromArgb(255, 107, 129);
         }
 
         private static void DrawCenteredAt(Graphics g, string text, Font font, Brush brush, float cx, float cy, int w, int h)
@@ -603,6 +647,14 @@ namespace LcdFusion
                 case OverlayKind.GpuTemp: return s != null && s.HasGpuTemp ? Round(s.GpuTempC) + "°C" : "--";
                 case OverlayKind.CpuLoad: return s != null && s.HasCpuLoad ? Round(s.CpuLoad) + "%" : "--";
                 case OverlayKind.GpuLoad: return s != null && s.HasGpuLoad ? Round(s.GpuLoad) + "%" : "--";
+                case OverlayKind.CpuClock: return s != null && s.HasCpuClock ? (s.CpuClockMhz / 1000.0).ToString("0.0") + " GHz" : "--";
+                case OverlayKind.GpuClock: return s != null && s.HasGpuClock ? Round(s.GpuClockMhz) + " MHz" : "--";
+                case OverlayKind.CpuPower: return s != null && s.HasCpuPower ? Round(s.CpuPowerW) + " W" : "--";
+                case OverlayKind.GpuPower: return s != null && s.HasGpuPower ? Round(s.GpuPowerW) + " W" : "--";
+                case OverlayKind.GpuVram: return s != null && s.HasGpuVram ? (s.GpuVramUsedMb / 1024.0).ToString("0.0") + " GB" : "--";
+                case OverlayKind.RamLoad: return s != null && s.HasRamLoad ? Round(s.RamLoad) + "%" : "--";
+                case OverlayKind.GpuFan: return s != null && s.HasGpuFan ? Round(s.GpuFanRpm) + " RPM" : "--";
+                case OverlayKind.CpuCores: return "";
                 case OverlayKind.Clock: return DateTime.Now.ToString("HH:mm:ss");
                 case OverlayKind.Date: return DateTime.Now.ToString("ddd dd MMM");
             }
@@ -617,6 +669,14 @@ namespace LcdFusion
                 case OverlayKind.GpuTemp: return "GPU";
                 case OverlayKind.CpuLoad: return "CPU";
                 case OverlayKind.GpuLoad: return "GPU";
+                case OverlayKind.CpuClock: return "CPU CLOCK";
+                case OverlayKind.GpuClock: return "GPU CLOCK";
+                case OverlayKind.CpuPower: return "CPU";
+                case OverlayKind.GpuPower: return "GPU";
+                case OverlayKind.GpuVram: return "VRAM";
+                case OverlayKind.RamLoad: return "RAM";
+                case OverlayKind.GpuFan: return "VENTOLA";
+                case OverlayKind.CpuCores: return "CORE CPU";
                 default: return "";
             }
         }
