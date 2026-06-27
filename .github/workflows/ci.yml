@@ -1,0 +1,27 @@
+name: CI build check
+
+# Validates the SDK-style project builds with `dotnet`. Runs only on the
+# modernization branch for now (no release side effects).
+on:
+  push:
+    branches: [ modernize-sdk ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore LcdFusion/LcdFusion.csproj
+
+      - name: Build
+        run: dotnet build LcdFusion/LcdFusion.csproj -c Release --no-restore

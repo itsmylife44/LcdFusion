@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x86</PlatformTarget>
+    <RootNamespace>LcdFusion</RootNamespace>
+    <AssemblyName>LcdFusion</AssemblyName>
+    <StartupObject>LcdFusion.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Keep the hand-written AssemblyInfo.cs instead of the SDK-generated one. -->
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <Deterministic>true</Deterministic>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+
+  <!-- LibUsbDotNet comes straight from NuGet. -->
+  <ItemGroup>
+    <PackageReference Include="LibUsbDotNet" Version="2.2.29" />
+  </ItemGroup>
+
+  <!-- LibreHardwareMonitor 0.9.4 + HidSharp are referenced from the validated vendored
+       binaries; their NuGet metadata otherwise drags in an out-of-band System.Management
+       that conflicts with the in-box one this assembly is built against. -->
+  <ItemGroup>
+    <Reference Include="LibreHardwareMonitorLib">
+      <HintPath>..\tools\librehardwaremonitor\LibreHardwareMonitorLib.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="HidSharp">
+      <HintPath>..\tools\librehardwaremonitor\HidSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Management" />
+  </ItemGroup>
+
+  <!-- Shared protocol code lives outside the project folder. -->
+  <ItemGroup>
+    <Compile Include="..\protocol\ValkyrieHidInitializer.cs" Link="protocol\ValkyrieHidInitializer.cs" />
+  </ItemGroup>
+
+</Project>
