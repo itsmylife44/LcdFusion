@@ -564,15 +564,40 @@ namespace LcdFusion
             root.RowDefinitions.Add(new RowDefinition());
             root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            var title = new TextBlock { Text = "LCD Fusion", FontSize = 24, FontWeight = FontWeights.SemiBold, Foreground = TextBr };
-            root.Children.Add(title);
+            var head = new StackPanel();
+            head.Children.Add(new TextBlock { Text = "LCD Fusion", FontSize = 24, FontWeight = FontWeights.SemiBold, Foreground = TextBr });
+            head.Children.Add(new TextBlock { Text = Loc.T("about.subtitle"), FontSize = 12.5, Foreground = MutedBr, Margin = new Thickness(0, 4, 0, 0) });
+            root.Children.Add(head);
 
-            var tabs = new TabControl { Margin = new Thickness(0, 18, 0, 0), Background = Surface, BorderBrush = SoftBr, Foreground = TextBr };
-            tabs.Items.Add(AboutTab(Loc.T("about.tab.project"), AboutProjectText()));
-            tabs.Items.Add(AboutTab(Loc.T("about.tab.legal"), LegalNoticeText()));
-            tabs.Items.Add(AboutTab(Loc.T("about.tab.licenses"), LicenseNoticeText()));
-            Grid.SetRow(tabs, 1);
-            root.Children.Add(tabs);
+            var body = new Grid { Margin = new Thickness(0, 18, 0, 0) };
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(168) });
+            body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+            body.ColumnDefinitions.Add(new ColumnDefinition());
+
+            var nav = new StackPanel();
+            TextBox content = LegalTextBox("");
+            Button projectBtn = null, legalBtn = null, licensesBtn = null;
+            Action<Button, string> show = delegate(Button active, string text)
+            {
+                content.Text = text;
+                StyleAboutNav(projectBtn, active == projectBtn);
+                StyleAboutNav(legalBtn, active == legalBtn);
+                StyleAboutNav(licensesBtn, active == licensesBtn);
+            };
+
+            projectBtn = AboutNavButton(Loc.T("about.tab.project"), delegate { show(projectBtn, AboutProjectText()); });
+            legalBtn = AboutNavButton(Loc.T("about.tab.legal"), delegate { show(legalBtn, LegalNoticeText()); });
+            licensesBtn = AboutNavButton(Loc.T("about.tab.licenses"), delegate { show(licensesBtn, LicenseNoticeText()); });
+            nav.Children.Add(projectBtn);
+            nav.Children.Add(legalBtn);
+            nav.Children.Add(licensesBtn);
+            body.Children.Add(nav);
+
+            Grid.SetColumn(content, 2);
+            body.Children.Add(content);
+            Grid.SetRow(body, 1);
+            root.Children.Add(body);
+            show(projectBtn, AboutProjectText());
 
             var close = Btn(Loc.T("dlg.close"), delegate { dlg.Close(); }, "BtnPrimary");
             close.HorizontalAlignment = HorizontalAlignment.Right;
@@ -584,12 +609,24 @@ namespace LcdFusion
             dlg.ShowDialog();
         }
 
-        private TabItem AboutTab(string header, string text)
+        private Button AboutNavButton(string text, RoutedEventHandler handler)
         {
-            return new TabItem { Header = header, Foreground = TextBr, Content = LegalTextBox(text) };
+            var b = Btn(text, handler, "BtnGhost");
+            b.HorizontalContentAlignment = HorizontalAlignment.Left;
+            b.Margin = new Thickness(0, 0, 0, 8);
+            b.Padding = new Thickness(14, 10, 14, 10);
+            return b;
         }
 
-        private UIElement LegalTextBox(string text)
+        private void StyleAboutNav(Button b, bool active)
+        {
+            if (b == null) return;
+            b.Background = active ? AccentBr : Surface2;
+            b.Foreground = active ? AccentTextBr : TextBr;
+            b.BorderBrush = active ? AccentBr : SoftBr;
+        }
+
+        private TextBox LegalTextBox(string text)
         {
             return new TextBox
             {
@@ -610,8 +647,7 @@ namespace LcdFusion
 
         private string AboutProjectText()
         {
-            Version version = Assembly.GetExecutingAssembly().GetName().Version;
-            string versionText = version != null ? version.ToString() : "1.0.0";
+            string versionText = AppVersionText();
             return
                 "LCD Fusion" + Environment.NewLine +
                 Loc.T("about.subtitle") + Environment.NewLine + Environment.NewLine +
@@ -621,6 +657,20 @@ namespace LcdFusion
                 Loc.T("about.repository") + ": https://github.com/itsmylife44/LcdFusion" + Environment.NewLine + Environment.NewLine +
                 Loc.T("about.opensource") + Environment.NewLine + Environment.NewLine +
                 Loc.T("about.vendorDisclaimer");
+        }
+
+        private string AppVersionText()
+        {
+            Assembly assembly = Assembly.GetExecutingAssembly();
+            object[] attrs = assembly.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false);
+            if (attrs.Length > 0)
+            {
+                string info = ((AssemblyInformationalVersionAttribute)attrs[0]).InformationalVersion;
+                if (!string.IsNullOrEmpty(info)) return info;
+            }
+            Version version = assembly.GetName().Version;
+            if (version == null) return "1.0.0";
+            return version.Revision > 0 ? version.ToString() : version.Major + "." + version.Minor + "." + version.Build;
         }
 
         private string LegalNoticeText()
