@@ -1,10 +1,9 @@
 name: CI build check
 
-# Validates the SDK-style project builds and packages with `dotnet`. Runs only on
-# the modernization branch for now (no release side effects).
+# Validates that the SDK-style project builds and packages with `dotnet`.
+# Acts as a pull-request gate (no release side effects).
 on:
-  push:
-    branches: [ modernize-sdk ]
+  pull_request:
   workflow_dispatch:
 
 permissions:
