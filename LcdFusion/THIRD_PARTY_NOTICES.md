@@ -17,4 +17,4 @@ Dependency of LibreHardwareMonitorLib (HID access).
 ## LibUsbDotNet 2.2.29 — LGPL-3.0
 Used for the Valkyrie/Thermalright USB transport.
 - Source: https://github.com/LibUsbDotNet/LibUsbDotNet/tree/5dd91a2fda393cf11db2072f2b45c3aee2750388
-- License: GNU Lesser General Public License 3.0 — `licenses/LibUsbDotNet-LGPL-3.0.txt`
+- License: GNU Lesser General Public License 3.0 — `licenses/LGPL-3.0.txt`

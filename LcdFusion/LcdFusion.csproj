@@ -41,4 +41,11 @@
     <Compile Include="..\protocol\ValkyrieHidInitializer.cs" Link="protocol\ValkyrieHidInitializer.cs" />
   </ItemGroup>
 
+  <!-- Legal notices must ship with the app; the About dialog reads these files. -->
+  <ItemGroup>
+    <None Include="..\LICENSE" Link="LICENSE.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="licenses\**\*.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

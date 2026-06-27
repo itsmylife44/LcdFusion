@@ -1,7 +1,9 @@
 using Microsoft.Win32;
 using LibUsbDotNet;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
@@ -79,6 +81,7 @@ namespace LcdFusion
         private System.Windows.Forms.ToolStripMenuItem _trayOpen, _trayExit;
         private bool _trayHinted;
         private bool _profileDirty;
+        private readonly List<System.Drawing.Color> _recentColors = new List<System.Drawing.Color>();
         private volatile bool _refreshing;
         private readonly DispatcherTimer _timer;
 
@@ -88,6 +91,7 @@ namespace LcdFusion
 
             AppSettings settings = ProfileService.LoadSettings();
             if (!string.IsNullOrEmpty(settings.Lang) && Array.IndexOf(Loc.Codes, settings.Lang) >= 0) Loc.Lang = settings.Lang;
+            LoadRecentColors(settings);
             _currentProfile = settings.LastProfile ?? "";
             _autoStart = AutoStartService.IsEnabled();
 
@@ -215,6 +219,9 @@ namespace LcdFusion
             headerRight.Children.Add(DevicePill(true));
             headerRight.Children.Add(DevicePill(false));
             headerRight.Children.Add(LangSelector());
+            var about = Btn(Loc.T("btn.about"), delegate { ShowAboutDialog(); }, "BtnGhost");
+            about.Margin = new Thickness(8, 0, 0, 0);
+            headerRight.Children.Add(about);
             var free = Btn(Loc.T("btn.free"), delegate { FreeDevices(); }, "BtnGhost");
             free.Margin = new Thickness(8, 0, 0, 0);
             headerRight.Children.Add(free);
@@ -371,6 +378,31 @@ namespace LcdFusion
             if (_profileDirtyText != null) _profileDirtyText.Text = _profileDirty ? Loc.T("prof.unsaved") : "";
         }
 
+        private void LoadRecentColors(AppSettings settings)
+        {
+            _recentColors.Clear();
+            if (settings == null || settings.RecentColors == null) return;
+            for (int i = settings.RecentColors.Count - 1; i >= 0; i--)
+                RememberColor(System.Drawing.Color.FromArgb(settings.RecentColors[i]), false);
+        }
+
+        private List<int> RecentColorArgb()
+        {
+            var values = new List<int>();
+            foreach (System.Drawing.Color color in _recentColors) values.Add(color.ToArgb());
+            return values;
+        }
+
+        private void RememberColor(System.Drawing.Color color) { RememberColor(color, true); }
+        private void RememberColor(System.Drawing.Color color, bool rebuild)
+        {
+            for (int i = _recentColors.Count - 1; i >= 0; i--)
+                if (ColorsEqual(_recentColors[i], color)) _recentColors.RemoveAt(i);
+            _recentColors.Insert(0, System.Drawing.Color.FromArgb(255, color.R, color.G, color.B));
+            while (_recentColors.Count > 8) _recentColors.RemoveAt(_recentColors.Count - 1);
+            if (rebuild) RebuildEditor();
+        }
+
         private void ToggleAutostart(bool on)
         {
             bool ok = on ? AutoStartService.Enable() : AutoStartService.Disable();
@@ -510,6 +542,145 @@ namespace LcdFusion
             return card;
         }
 
+        private void ShowAboutDialog()
+        {
+            var dlg = new Window
+            {
+                Title = Loc.T("about.title"),
+                Width = 780,
+                Height = 620,
+                MinWidth = 620,
+                MinHeight = 460,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                Background = Bg,
+                Foreground = TextBr,
+                FontFamily = new FontFamily("Segoe UI")
+            };
+            dlg.Resources.MergedDictionaries.Add(Theme.Build());
+
+            var root = new Grid { Margin = new Thickness(22) };
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            root.RowDefinitions.Add(new RowDefinition());
+            root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            var title = new TextBlock { Text = "LCD Fusion", FontSize = 24, FontWeight = FontWeights.SemiBold, Foreground = TextBr };
+            root.Children.Add(title);
+
+            var tabs = new TabControl { Margin = new Thickness(0, 18, 0, 0), Background = Surface, BorderBrush = SoftBr, Foreground = TextBr };
+            tabs.Items.Add(AboutTab(Loc.T("about.tab.project"), AboutProjectText()));
+            tabs.Items.Add(AboutTab(Loc.T("about.tab.legal"), LegalNoticeText()));
+            tabs.Items.Add(AboutTab(Loc.T("about.tab.licenses"), LicenseNoticeText()));
+            Grid.SetRow(tabs, 1);
+            root.Children.Add(tabs);
+
+            var close = Btn(Loc.T("dlg.close"), delegate { dlg.Close(); }, "BtnPrimary");
+            close.HorizontalAlignment = HorizontalAlignment.Right;
+            close.Margin = new Thickness(0, 18, 0, 0);
+            Grid.SetRow(close, 2);
+            root.Children.Add(close);
+
+            dlg.Content = root;
+            dlg.ShowDialog();
+        }
+
+        private TabItem AboutTab(string header, string text)
+        {
+            return new TabItem { Header = header, Foreground = TextBr, Content = LegalTextBox(text) };
+        }
+
+        private UIElement LegalTextBox(string text)
+        {
+            return new TextBox
+            {
+                Text = text,
+                IsReadOnly = true,
+                AcceptsReturn = true,
+                TextWrapping = TextWrapping.Wrap,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Background = Panel,
+                Foreground = TextBr,
+                BorderBrush = SoftBr,
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(14),
+                FontSize = 13
+            };
+        }
+
+        private string AboutProjectText()
+        {
+            Version version = Assembly.GetExecutingAssembly().GetName().Version;
+            string versionText = version != null ? version.ToString() : "1.0.0";
+            return
+                "LCD Fusion" + Environment.NewLine +
+                Loc.T("about.subtitle") + Environment.NewLine + Environment.NewLine +
+                Loc.T("about.version") + ": " + versionText + Environment.NewLine +
+                Loc.T("about.developer") + ": itsmylife44" + Environment.NewLine +
+                Loc.T("about.license") + ": MIT" + Environment.NewLine +
+                Loc.T("about.repository") + ": https://github.com/itsmylife44/LcdFusion" + Environment.NewLine + Environment.NewLine +
+                Loc.T("about.opensource") + Environment.NewLine + Environment.NewLine +
+                Loc.T("about.vendorDisclaimer");
+        }
+
+        private string LegalNoticeText()
+        {
+            return
+                Loc.T("legal.unofficial") + Environment.NewLine + Environment.NewLine +
+                Loc.T("legal.interop") + Environment.NewLine + Environment.NewLine +
+                Loc.T("legal.trademarks") + Environment.NewLine + Environment.NewLine +
+                Loc.T("legal.noTelemetry") + Environment.NewLine + Environment.NewLine +
+                Loc.T("legal.risk");
+        }
+
+        private string LicenseNoticeText()
+        {
+            string thirdParty = ReadLegalFile("THIRD_PARTY_NOTICES.md", Path.Combine("LcdFusion", "THIRD_PARTY_NOTICES.md"));
+            string license = ReadLegalFile("LICENSE.txt", "LICENSE");
+            string bundled = ReadBundledLicenseIndex();
+            return
+                Loc.T("about.tab.licenses") + Environment.NewLine + Environment.NewLine +
+                "Third-party notices" + Environment.NewLine +
+                thirdParty + Environment.NewLine + Environment.NewLine +
+                "Project license" + Environment.NewLine +
+                license + Environment.NewLine + Environment.NewLine +
+                bundled;
+        }
+
+        private string ReadLegalFile(params string[] relativePaths)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            foreach (string rel in relativePaths)
+            {
+                string path = Path.Combine(baseDir, rel);
+                try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
+            }
+            string cwd = Directory.GetCurrentDirectory();
+            foreach (string rel in relativePaths)
+            {
+                string path = Path.Combine(cwd, rel);
+                try { if (File.Exists(path)) return File.ReadAllText(path); } catch { }
+            }
+            return Loc.T("legal.fileMissing");
+        }
+
+        private string ReadBundledLicenseIndex()
+        {
+            string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "licenses");
+            if (!Directory.Exists(dir)) dir = Path.Combine(Directory.GetCurrentDirectory(), "LcdFusion", "licenses");
+            if (!Directory.Exists(dir)) return "";
+            try
+            {
+                string[] files = Directory.GetFiles(dir, "*.txt");
+                Array.Sort(files, StringComparer.OrdinalIgnoreCase);
+                var text = new System.Text.StringBuilder();
+                text.AppendLine("Bundled license files");
+                foreach (string file in files) text.AppendLine("- " + Path.GetFileName(file));
+                return text.ToString();
+            }
+            catch { return ""; }
+        }
+
         // ---- editor rebuild ---------------------------------------------------------
 
         private void RebuildEditor()
@@ -534,9 +705,15 @@ namespace LcdFusion
             var bgRow = new WrapPanel { Margin = new Thickness(0, 10, 0, 0) };
             bgRow.Children.Add(Chip(Loc.T("bg.image"), delegate { PickMedia(false); }, scene.Background == BackgroundKind.Image));
             bgRow.Children.Add(Chip("GIF", delegate { PickMedia(true); }, scene.Background == BackgroundKind.Gif));
-            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.Color); MarkProfileDirty(); RebuildEditor(); }, scene.Background == BackgroundKind.Color));
+            bgRow.Children.Add(Chip(Loc.T("bg.color"), delegate { PickBackgroundColor(); }, scene.Background == BackgroundKind.Color));
             bgRow.Children.Add(Chip(Loc.T("bg.none"), delegate { _engine.SetBackgroundKind(_activeValk, BackgroundKind.None); MarkProfileDirty(); RebuildEditor(); }, scene.Background == BackgroundKind.None));
             _editorPanel.Children.Add(bgRow);
+
+            if (scene.Background == BackgroundKind.Color)
+            {
+                _editorPanel.Children.Add(new TextBlock { Text = Loc.T("color.palette"), Foreground = MutedBr, FontSize = 12, Margin = new Thickness(2, 8, 0, 0) });
+                _editorPanel.Children.Add(ColorPalette(scene.BgColor, color => SetBackgroundColor(color)));
+            }
 
             if (scene.Background == BackgroundKind.Image || scene.Background == BackgroundKind.Gif)
             {
@@ -635,17 +812,12 @@ namespace LcdFusion
             stack.Children.Add(Slider(Loc.T("sl.y"), 0, 1, o.Y, v => _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Y = v; }), v => (int)(v * 100) + "%"));
 
             stack.Children.Add(new TextBlock { Text = Loc.T("ov.color"), Foreground = MutedBr, FontSize = 12, Margin = new Thickness(0, 10, 0, 0) });
-            var colors = new WrapPanel { Margin = new Thickness(0, 7, 0, 0) };
-            for (int i = 0; i < SwatchHex.Length; i++)
+            stack.Children.Add(ColorPalette(o.Color, color =>
             {
-                string hex = SwatchHex[i];
-                bool selected = SameColor(o.Color, hex);
-                var sw = new Button { Width = 28, Height = 28, Margin = new Thickness(0, 0, 9, 0), Background = Br(hex), BorderBrush = selected ? AccentBr : SoftBr, BorderThickness = new Thickness(selected ? 2 : 1), Cursor = Cursors.Hand, ToolTip = SwatchName(i) };
-                sw.Template = SwatchTemplate();
-                sw.Click += delegate { _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Color = Sd(hex); }); MarkProfileDirty(); RebuildEditor(); };
-                colors.Children.Add(sw);
-            }
-            stack.Children.Add(colors);
+                _engine.Edit(_activeValk, s => { if (_sel < s.Overlays.Count) s.Overlays[_sel].Color = color; });
+                MarkProfileDirty();
+                RebuildEditor();
+            }));
 
             var bottom = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
             var labelToggle = new CheckBox { Content = Loc.T("ov.label"), IsChecked = o.ShowLabel, Foreground = TextBr, FontSize = 13, Margin = new Thickness(0, 4, 16, 0), VerticalAlignment = VerticalAlignment.Center };
@@ -683,6 +855,39 @@ namespace LcdFusion
             MarkProfileDirty();
             SetStatus(true, Loc.T("screen.copiedTo", targetName));
             RefreshPreviewOverlay();
+        }
+
+        private bool PickColor(System.Drawing.Color initial, out System.Drawing.Color picked)
+        {
+            picked = initial;
+            using (var dialog = new System.Windows.Forms.ColorDialog())
+            {
+                dialog.AllowFullOpen = true;
+                dialog.FullOpen = true;
+                dialog.Color = System.Drawing.Color.FromArgb(initial.R, initial.G, initial.B);
+                if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK) return false;
+                picked = System.Drawing.Color.FromArgb(255, dialog.Color.R, dialog.Color.G, dialog.Color.B);
+                RememberColor(picked, false);
+                return true;
+            }
+        }
+
+        private void PickBackgroundColor()
+        {
+            System.Drawing.Color picked;
+            System.Drawing.Color initial = _engine.Scene(_activeValk).BgColor;
+            if (!PickColor(initial, out picked)) return;
+            _engine.Edit(_activeValk, s => { s.Background = BackgroundKind.Color; s.BgColor = picked; });
+            MarkProfileDirty();
+            RebuildEditor();
+        }
+
+        private void SetBackgroundColor(System.Drawing.Color color)
+        {
+            RememberColor(color, false);
+            _engine.Edit(_activeValk, s => { s.Background = BackgroundKind.Color; s.BgColor = color; });
+            MarkProfileDirty();
+            RebuildEditor();
         }
 
         private void AddOverlay(OverlayKind kind)
@@ -1077,6 +1282,47 @@ namespace LcdFusion
             return b;
         }
 
+        private UIElement ColorPalette(System.Drawing.Color selected, Action<System.Drawing.Color> apply)
+        {
+            var panel = new WrapPanel { Margin = new Thickness(0, 7, 0, 0) };
+            for (int i = 0; i < SwatchHex.Length; i++)
+            {
+                string hex = SwatchHex[i];
+                panel.Children.Add(ColorSwatch(Sd(hex), SameColor(selected, hex), SwatchName(i), apply));
+            }
+            foreach (System.Drawing.Color recent in _recentColors)
+                panel.Children.Add(ColorSwatch(recent, ColorsEqual(selected, recent), Loc.T("color.recent"), apply));
+
+            var custom = new Button { Content = "+", ToolTip = Loc.T("color.custom"), Width = 28, Height = 28, Margin = new Thickness(0, 0, 9, 8), Cursor = Cursors.Hand };
+            custom.Style = (Style)FindResource("BtnChip");
+            custom.Padding = new Thickness(0);
+            custom.Click += delegate
+            {
+                System.Drawing.Color picked;
+                if (PickColor(selected, out picked)) apply(picked);
+            };
+            panel.Children.Add(custom);
+            return panel;
+        }
+
+        private Button ColorSwatch(System.Drawing.Color color, bool selected, string tooltip, Action<System.Drawing.Color> apply)
+        {
+            var sw = new Button
+            {
+                Width = 28,
+                Height = 28,
+                Margin = new Thickness(0, 0, 9, 8),
+                Background = WpfColor(color),
+                BorderBrush = selected ? AccentBr : SoftBr,
+                BorderThickness = new Thickness(selected ? 2 : 1),
+                Cursor = Cursors.Hand,
+                ToolTip = tooltip
+            };
+            sw.Template = SwatchTemplate();
+            sw.Click += delegate { RememberColor(color, false); apply(color); };
+            return sw;
+        }
+
         private Button Chip(string text, RoutedEventHandler handler)
         {
             return Chip(text, handler, false);
@@ -1171,7 +1417,7 @@ namespace LcdFusion
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); _tray = null; }
             if (_trayIcon != null) { _trayIcon.Dispose(); _trayIcon = null; }
             try { ProfileService.SaveLast(_engine.Capture(_tgtValk, _tgtThermal, _activeValk)); } catch { }
-            try { ProfileService.SaveSettings(new AppSettings { Lang = Loc.Lang, LastProfile = _currentProfile }); } catch { }
+            try { ProfileService.SaveSettings(new AppSettings { Lang = Loc.Lang, LastProfile = _currentProfile, RecentColors = RecentColorArgb() }); } catch { }
             Loc.Changed -= OnLanguageChanged;
             CompositionTarget.Rendering -= OnRender;
             _engine.Shutdown();
