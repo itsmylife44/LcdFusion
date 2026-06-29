@@ -145,6 +145,7 @@ namespace LcdFusion
         private bool _targetValk = true;
         private bool _targetThermal;
         private bool _previewValk = true;
+        private bool _previewEnabled = true;
 
         private SensorReading _sensors = new SensorReading();
         private byte[] _previewPng;
@@ -266,6 +267,15 @@ namespace LcdFusion
         public void SetPreviewTarget(bool valkyrie)
         {
             lock (_lock) { _previewValk = valkyrie; _dirtyPreview = true; }
+        }
+
+        public void SetPreviewEnabled(bool enabled)
+        {
+            lock (_lock)
+            {
+                _previewEnabled = enabled;
+                if (enabled) _dirtyPreview = true;
+            }
         }
 
         public bool PreviewIsValkyrie { get { lock (_lock) { return _previewValk; } } }
@@ -431,15 +441,15 @@ namespace LcdFusion
                     if (_thermal.Gif != null) _thermal.Gif.Advance(delta);
                 }
 
-                bool valkDyn, thermalDyn, previewValk, streaming, tv, tt;
+                bool valkDyn, thermalDyn, previewValk, previewEnabled, streaming, tv, tt;
                 lock (_lock)
                 {
                     valkDyn = _valk.IsDynamic(); thermalDyn = _thermal.IsDynamic();
-                    previewValk = _previewValk; streaming = _streaming; tv = _targetValk; tt = _targetThermal;
+                    previewValk = _previewValk; previewEnabled = _previewEnabled; streaming = _streaming; tv = _targetValk; tt = _targetThermal;
                 }
 
                 bool previewDyn = previewValk ? valkDyn : thermalDyn;
-                if (now - lastPreview >= 33 && (previewDyn || _dirtyPreview))
+                if (previewEnabled && now - lastPreview >= 33 && (previewDyn || _dirtyPreview))
                 {
                     RenderPreview(previewValk);
                     lastPreview = now;

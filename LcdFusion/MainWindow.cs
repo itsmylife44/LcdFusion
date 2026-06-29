@@ -81,6 +81,7 @@ namespace LcdFusion
         private System.Windows.Forms.ToolStripMenuItem _trayOpen, _trayExit;
         private bool _trayHinted;
         private bool _profileDirty;
+        private bool _populatingProfiles;
         private string _lastSeenVersion = "";
         private bool _startupChangelogChecked;
         private readonly List<System.Drawing.Color> _recentColors = new List<System.Drawing.Color>();
@@ -106,13 +107,18 @@ namespace LcdFusion
             TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
             Icon = BuildWindowIcon();
 
-            // Restore the last session before the UI is built so it reflects the saved state.
-            ProfileData last = ProfileService.LoadLast();
-            bool autoStream = last == null || last.Streaming;
-            if (last != null)
+            // Prefer the last selected profile on startup; fall back to the last session for older installs.
+            ProfileData startupProfile = string.IsNullOrEmpty(_currentProfile) ? null : ProfileService.Load(_currentProfile);
+            if (startupProfile == null)
             {
-                _engine.Apply(last);
-                _tgtValk = last.TargetValk; _tgtThermal = last.TargetThermal; _activeValk = last.ActiveValk;
+                _currentProfile = "";
+                startupProfile = ProfileService.LoadLast();
+            }
+            bool autoStream = startupProfile == null || startupProfile.Streaming;
+            if (startupProfile != null)
+            {
+                _engine.Apply(startupProfile);
+                _tgtValk = startupProfile.TargetValk; _tgtThermal = startupProfile.TargetThermal; _activeValk = startupProfile.ActiveValk;
             }
 
             Content = BuildUi();
@@ -182,6 +188,7 @@ namespace LcdFusion
         private void OnStateChanged(object sender, EventArgs e)
         {
             if (WindowState != WindowState.Minimized || _tray == null) return;
+            _engine.SetPreviewEnabled(false);
             Hide();
             _tray.Visible = true;
             if (!_trayHinted)
@@ -195,6 +202,7 @@ namespace LcdFusion
         private void RestoreFromTray()
         {
             if (_tray != null) _tray.Visible = false;
+            _engine.SetPreviewEnabled(true);
             Show();
             WindowState = WindowState.Normal;
             Activate();
@@ -277,6 +285,7 @@ namespace LcdFusion
             left.Children.Add(new TextBlock { Text = Loc.T("prof.label"), Foreground = MutedBr, FontSize = 13, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 10, 0) });
             _profileCombo = new ComboBox { Width = 220, VerticalAlignment = VerticalAlignment.Center };
             PopulateProfiles();
+            _profileCombo.SelectionChanged += OnProfileSelectionChanged;
             left.Children.Add(_profileCombo);
             var load = Btn(Loc.T("prof.load"), delegate { LoadSelectedProfile(); }, "BtnGhost"); load.Margin = new Thickness(10, 0, 0, 0); left.Children.Add(load);
             var save = Btn(Loc.T("prof.save"), delegate { SaveCurrentProfile(); }, "BtnPrimary"); save.Margin = new Thickness(8, 0, 0, 0); left.Children.Add(save);
@@ -299,15 +308,27 @@ namespace LcdFusion
 
         private void PopulateProfiles()
         {
-            _profileCombo.Items.Clear();
-            string[] names = ProfileService.List();
-            foreach (string n in names) _profileCombo.Items.Add(n);
-            _profileCombo.IsEnabled = names.Length > 0;
-            if (names.Length > 0)
+            if (_profileCombo == null) return;
+            _populatingProfiles = true;
+            try
             {
-                int idx = Array.IndexOf(names, _currentProfile);
-                _profileCombo.SelectedIndex = idx >= 0 ? idx : 0;
+                _profileCombo.Items.Clear();
+                string[] names = ProfileService.List();
+                foreach (string n in names) _profileCombo.Items.Add(n);
+                _profileCombo.IsEnabled = names.Length > 0;
+                if (names.Length > 0)
+                {
+                    int idx = Array.IndexOf(names, _currentProfile);
+                    _profileCombo.SelectedIndex = idx >= 0 ? idx : 0;
+                }
             }
+            finally { _populatingProfiles = false; }
+        }
+
+        private void OnProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_populatingProfiles || _profileCombo == null || _profileCombo.SelectedItem == null) return;
+            LoadSelectedProfile();
         }
 
         private void LoadSelectedProfile()
@@ -319,6 +340,7 @@ namespace LcdFusion
             ApplyProfile(p);
             _currentProfile = name;
             MarkProfileClean();
+            SaveCurrentSettings();
             SetStatus(true, Loc.T("prof.loaded") + ": " + name);
         }
 
