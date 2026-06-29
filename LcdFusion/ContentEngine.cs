@@ -116,12 +116,55 @@ namespace LcdFusion
         public FitMode Fit = FitMode.Fit;
         public readonly List<Overlay> Overlays = new List<Overlay>();
 
-        public bool IsDynamic()
+        public bool NeedsSensorData()
         {
-            if (Background == BackgroundKind.Gif) return true;
             foreach (Overlay o in Overlays)
-                if (o.Kind != OverlayKind.Text) return true;
+                if (IsSensorOverlay(o.Kind)) return true;
             return false;
+        }
+
+        public int PreviewIntervalMs()
+        {
+            return RefreshIntervalMs(33);
+        }
+
+        public int StreamIntervalMs(bool valkyrie)
+        {
+            return RefreshIntervalMs(valkyrie ? 50 : 150);
+        }
+
+        private int RefreshIntervalMs(int gifIntervalMs)
+        {
+            if (Background == BackgroundKind.Gif) return gifIntervalMs;
+            bool hasDate = false;
+            foreach (Overlay o in Overlays)
+            {
+                if (o.Kind == OverlayKind.Clock || IsSensorOverlay(o.Kind)) return 1000;
+                if (o.Kind == OverlayKind.Date) hasDate = true;
+            }
+            return hasDate ? 60000 : int.MaxValue;
+        }
+
+        private static bool IsSensorOverlay(OverlayKind kind)
+        {
+            switch (kind)
+            {
+                case OverlayKind.CpuTemp:
+                case OverlayKind.GpuTemp:
+                case OverlayKind.CpuLoad:
+                case OverlayKind.GpuLoad:
+                case OverlayKind.CpuClock:
+                case OverlayKind.GpuClock:
+                case OverlayKind.CpuPower:
+                case OverlayKind.GpuPower:
+                case OverlayKind.GpuVram:
+                case OverlayKind.RamLoad:
+                case OverlayKind.GpuFan:
+                case OverlayKind.CpuCores:
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         public void DisposeSources()
@@ -427,11 +470,17 @@ namespace LcdFusion
                 lastTick = now;
 
                 bool needSensors;
-                lock (_lock) { needSensors = _valk.IsDynamic() || _thermal.IsDynamic(); }
+                lock (_lock) { needSensors = _valk.NeedsSensorData() || _thermal.NeedsSensorData(); }
                 if (needSensors && now - lastSensor >= 1000)
                 {
                     SensorReading r = SensorService.Read();
-                    lock (_lock) { _sensors = r; }
+                    lock (_lock)
+                    {
+                        _sensors = r;
+                        if (_valk.NeedsSensorData()) _dirtyValk = true;
+                        if (_thermal.NeedsSensorData()) _dirtyThermal = true;
+                        if ((_previewValk ? _valk : _thermal).NeedsSensorData()) _dirtyPreview = true;
+                    }
                     lastSensor = now;
                 }
 
@@ -441,15 +490,17 @@ namespace LcdFusion
                     if (_thermal.Gif != null) _thermal.Gif.Advance(delta);
                 }
 
-                bool valkDyn, thermalDyn, previewValk, previewEnabled, streaming, tv, tt;
+                int valkInterval, thermalInterval, previewInterval;
+                bool previewValk, previewEnabled, streaming, tv, tt;
                 lock (_lock)
                 {
-                    valkDyn = _valk.IsDynamic(); thermalDyn = _thermal.IsDynamic();
+                    valkInterval = _valk.StreamIntervalMs(true);
+                    thermalInterval = _thermal.StreamIntervalMs(false);
                     previewValk = _previewValk; previewEnabled = _previewEnabled; streaming = _streaming; tv = _targetValk; tt = _targetThermal;
+                    previewInterval = (previewValk ? _valk : _thermal).PreviewIntervalMs();
                 }
 
-                bool previewDyn = previewValk ? valkDyn : thermalDyn;
-                if (previewEnabled && now - lastPreview >= 33 && (previewDyn || _dirtyPreview))
+                if (previewEnabled && (_dirtyPreview || ShouldRefresh(now, lastPreview, previewInterval)))
                 {
                     RenderPreview(previewValk);
                     lastPreview = now;
@@ -458,14 +509,19 @@ namespace LcdFusion
 
                 if (streaming)
                 {
-                    if (tv && now - lastValk >= (valkDyn ? 50 : 120) && (valkDyn || _dirtyValk))
+                    if (tv && (_dirtyValk || ShouldRefresh(now, lastValk, valkInterval)))
                     { PushValkyrie(); lastValk = now; _dirtyValk = false; }
-                    if (tt && now - lastThermal >= (thermalDyn ? 150 : 320) && (thermalDyn || _dirtyThermal))
+                    if (tt && (_dirtyThermal || ShouldRefresh(now, lastThermal, thermalInterval)))
                     { PushThermalright(); lastThermal = now; _dirtyThermal = false; }
                 }
 
                 Thread.Sleep(15);
             }
+        }
+
+        private static bool ShouldRefresh(long now, long last, int intervalMs)
+        {
+            return intervalMs != int.MaxValue && now - last >= intervalMs;
         }
 
         private void PushValkyrie()

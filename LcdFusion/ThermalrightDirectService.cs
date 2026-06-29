@@ -66,14 +66,14 @@ namespace LcdFusion
             WakeStream.Set();
 
             if (!firstStart)
-                return new DirectSendResult { Success = true, Message = "Streaming Thermalright attivo." };
+                return new DirectSendResult(true, "Streaming Thermalright attivo.");
 
             if (!FrameSent.WaitOne(6000))
                 return Fail("Timeout durante l'avvio dello streaming Thermalright.");
             lock (Sync)
             {
                 return string.IsNullOrEmpty(_streamError)
-                    ? new DirectSendResult { Success = true, Message = "Streaming Thermalright attivo." }
+                    ? new DirectSendResult(true, "Streaming Thermalright attivo.")
                     : Fail(_streamError);
             }
         }
@@ -195,7 +195,7 @@ namespace LcdFusion
             int transferred;
             ErrorCode code = writer.Write(data, 1000, out transferred);
             return code == ErrorCode.None && transferred == data.Length
-                ? new DirectSendResult { Success = true }
+                ? new DirectSendResult(true, "")
                 : Fail("Handshake Thermalright fallito: " + code + " (" + transferred + ").");
         }
 
@@ -206,7 +206,7 @@ namespace LcdFusion
             ErrorCode code = reader.Read(reply, 500, out transferred);
             if (code != ErrorCode.None || transferred < 2 || reply[0] != 0x03 || reply[1] != 0xFF)
                 return Fail("Risposta Thermalright non valida durante " + phase + ": " + code + ".");
-            return new DirectSendResult { Success = true };
+            return new DirectSendResult(true, "");
         }
 
         private static void Put16(byte[] target, int offset, int value)
@@ -225,7 +225,7 @@ namespace LcdFusion
 
         private static DirectSendResult Fail(string message)
         {
-            return new DirectSendResult { Success = false, Message = message };
+            return new DirectSendResult(false, message);
         }
     }
 }

@@ -8,8 +8,14 @@ namespace LcdFusion
 {
     internal sealed class DirectSendResult
     {
-        public bool Success;
-        public string Message;
+        public DirectSendResult(bool success, string message)
+        {
+            Success = success;
+            Message = message ?? "";
+        }
+
+        public bool Success { get; }
+        public string Message { get; }
     }
 
     internal static class ValkyrieDirectService
@@ -70,14 +76,14 @@ namespace LcdFusion
             }
 
             if (!firstStart)
-                return new DirectSendResult { Success = true, Message = "Streaming Valkyrie attivo." };
+                return new DirectSendResult(true, "Streaming Valkyrie attivo.");
 
             if (!FrameSent.WaitOne(8000))
                 return Fail("Timeout durante l'avvio dello streaming Valkyrie.");
             lock (Sync)
             {
                 return string.IsNullOrEmpty(_streamError)
-                    ? new DirectSendResult { Success = true, Message = "Streaming Valkyrie attivo." }
+                    ? new DirectSendResult(true, "Streaming Valkyrie attivo.")
                     : Fail(_streamError);
             }
         }
@@ -201,7 +207,7 @@ namespace LcdFusion
 
         private static DirectSendResult Fail(string message)
         {
-            return new DirectSendResult { Success = false, Message = message };
+            return new DirectSendResult(false, message);
         }
     }
 }
